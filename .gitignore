@@ -1,0 +1,7 @@
+Source/VSProj/Bin/*
+Source/VSProj/Lib/*
+Source/VSProj/Data/*
+Source/VSProj/vs2013/.vs/*
+Source/VSProj/vs2013/obj/*
+Source/VSProj/vs2013/bin/*
+Source/VSProj/vs2013/packages/*

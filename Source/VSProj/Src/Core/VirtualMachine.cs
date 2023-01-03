@@ -21,6 +21,8 @@ namespace IFix.Core
 
     public delegate void ExternInvoker(VirtualMachine vm, ref Call call, bool isInstantiate);
 
+    public unsafe delegate void ExternAccessor(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack);
+
     internal class FieldAddr
     {
         public object Object;
@@ -204,7 +206,13 @@ namespace IFix.Core
 
         internal FieldInfo[] fieldInfos;
 
+        Type[] fieldDeclTypes;
+
         internal Dictionary<int, NewFieldInfo> newFieldInfos;
+
+        ExternAccessor[] externLoaders;
+
+        ExternAccessor[] externStorers;
 
         AnonymousStoreyInfo[] anonymousStoreyInfos;
 
@@ -277,6 +285,8 @@ namespace IFix.Core
             set
             {
                 fieldInfos = value;
+                externLoaders = new ExternAccessor[fieldInfos.Length];
+                externStorers = new ExternAccessor[fieldInfos.Length];
             }
         }
 
@@ -898,7 +908,11 @@ namespace IFix.Core
                             if (externInvokeFunc == null)
                             {
                                 externInvokers[methodId] = externInvokeFunc
+#if ENABLE_IL2CPP
+                                    = (new DynBridgeMethodInvoker(externMethods[methodId])).Invoke;
+#else
                                     = (new ReflectionMethodInvoker(externMethods[methodId])).Invoke;
+#endif
                             }
                             //Info("call extern: " + externMethods[methodId]);
                             var top = evaluationStackPointer - paramCount;
@@ -1029,50 +1043,45 @@ namespace IFix.Core
                                 {
                                     var fieldInfo = fieldInfos[fieldIndex];
                                     //_Info("Ldfld fieldInfo:" + fieldInfo);
+                                    if (fieldInfo == null)
+                                    {
+                                        string fieldName = newFieldInfos[fieldIndex].Name;
+                                        Type fieldType = newFieldInfos[fieldIndex].FieldType;
+                                        Type declaringType = newFieldInfos[fieldIndex].DeclaringType;
 
-                                    Type declaringType = null;
-                                    Type fieldType = null;
-                                    string fieldName = null;
-                                    
-                                    if(fieldInfo == null)
-                                    {
-                                        fieldName = newFieldInfos[fieldIndex].Name;
-                                        fieldType = newFieldInfos[fieldIndex].FieldType;
-                                        declaringType = newFieldInfos[fieldIndex].DeclaringType;
-                                    }
-                                    else
-                                    {
-                                        fieldName = fieldInfo.Name;
-                                        fieldType = fieldInfo.FieldType;
-                                        declaringType = fieldInfo.DeclaringType;
-                                    }
-                                    
-                                    object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ptr,
-                                        managedStack, declaringType, this, false);
-                                    
-                                    if (obj == null)
-                                    {
-                                        throw new NullReferenceException(declaringType + "." + fieldName);
-                                    }
-                                    //_Info("Ldfld:" + fieldInfo + ",obj=" + obj.GetType());
-                                    
-                                    object fieldValue = null;
-  
-                                    if(fieldInfo == null)
-                                    {
+                                        object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ptr,
+                                            managedStack, declaringType, this, false);
+
+                                        if (obj == null)
+                                        {
+                                            throw new NullReferenceException(declaringType + "." + fieldName);
+                                        }
+                                        //_Info("Ldfld:" + fieldInfo + ",obj=" + obj.GetType());
+
                                         newFieldInfos[fieldIndex].CheckInit(this, obj);
-                                        
-                                        fieldValue = newFieldInfos[fieldIndex].GetValue(obj);
+
+                                        object fieldValue = newFieldInfos[fieldIndex].GetValue(obj);
+
+                                        //_Info("fieldValue:" + fieldValue);
+                                        //throw new Exception("fieldValue=" + fieldValue);
+                                        EvaluationStackOperation.PushObject(evaluationStackBase, ptr, managedStack,
+                                            fieldValue, fieldType);
                                     }
                                     else
                                     {
-                                        fieldValue = fieldInfo.GetValue(obj);
+                                        var externLoader = externLoaders[fieldIndex];
+                                        if (externLoader == null)
+                                        {
+#if ENABLE_IL2CPP
+                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
+#else
+                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
+#endif
+                                            externLoaders[fieldIndex] = externLoader = externAccessor.Load;
+                                            externStorers[fieldIndex] = externAccessor.Store;
+                                        }
+                                        externLoader(this, evaluationStackBase, ptr, managedStack);
                                     }
-
-                                    //_Info("fieldValue:" + fieldValue);
-                                    //throw new Exception("fieldValue=" + fieldValue);
-                                    EvaluationStackOperation.PushObject(evaluationStackBase, ptr, managedStack,
-                                        fieldValue, fieldType);
                                 }
                                 else
                                 {
@@ -1121,53 +1130,50 @@ namespace IFix.Core
                                 if (fieldIndex >= 0)
                                 {
                                     var fieldInfo = fieldInfos[pc->Operand];
+                                    if (fieldInfo == null)
+                                    {
+                                        string fieldName = newFieldInfos[fieldIndex].Name;
+                                        Type fieldType = newFieldInfos[fieldIndex].FieldType;
+                                        Type declaringType = newFieldInfos[fieldIndex].DeclaringType;
 
-                                    Type declaringType = null;
-                                    Type fieldType = null;
-                                    string fieldName = null;
-                                    
-                                    if(fieldInfo == null)
-                                    {
-                                        fieldName = newFieldInfos[fieldIndex].Name;
-                                        fieldType = newFieldInfos[fieldIndex].FieldType;
-                                        declaringType = newFieldInfos[fieldIndex].DeclaringType;
-                                    }
-                                    else
-                                    {
-                                        fieldName = fieldInfo.Name;
-                                        fieldType = fieldInfo.FieldType;
-                                        declaringType = fieldInfo.DeclaringType;
-                                    }
+                                        object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ptr,
+                                            managedStack, declaringType, this, false);
 
-                                    object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ptr,
-                                        managedStack, declaringType, this, false);
+                                        if (obj == null)
+                                        {
+                                            throw new NullReferenceException(declaringType + "." + fieldName);
+                                        }
 
-                                    if (obj == null)
-                                    {
-                                        throw new NullReferenceException(declaringType + "." + fieldName);
-                                    }
-
-                                    if(fieldInfo != null)
-                                    {
-                                        fieldInfo.SetValue(obj, EvaluationStackOperation.ToObject(evaluationStackBase,
-                                            evaluationStackPointer - 1, managedStack, fieldType, this));
-                                    }
-                                    else
-                                    {
                                         newFieldInfos[fieldIndex].SetValue(obj, EvaluationStackOperation.ToObject(evaluationStackBase,
                                             evaluationStackPointer - 1, managedStack, fieldType, this));
+
+                                        //如果field，array元素是值类型，需要重新update回去
+                                        if ((ptr->Type == ValueType.FieldReference
+                                            || ptr->Type == ValueType.ChainFieldReference
+                                            || ptr->Type == ValueType.StaticFieldReference
+                                            || ptr->Type == ValueType.ArrayReference)
+                                            && declaringType.IsValueType)
+                                        {
+                                            EvaluationStackOperation.UpdateReference(evaluationStackBase, ptr,
+                                                managedStack, obj, this, declaringType);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        var externStorer = externStorers[fieldIndex];
+                                        if (externStorer == null)
+                                        {
+#if ENABLE_IL2CPP
+                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
+#else
+                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
+#endif
+                                            externLoaders[fieldIndex] = externAccessor.Load;
+                                            externStorers[fieldIndex] = externStorer = externAccessor.Store;
+                                        }
+                                        externStorer(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
                                     }
 
-                                    //如果field，array元素是值类型，需要重新update回去
-                                    if ((ptr->Type == ValueType.FieldReference
-                                        || ptr->Type == ValueType.ChainFieldReference
-                                        || ptr->Type == ValueType.StaticFieldReference
-                                        || ptr->Type == ValueType.ArrayReference) 
-                                        && declaringType.IsValueType)
-                                    {
-                                        EvaluationStackOperation.UpdateReference(evaluationStackBase, ptr,
-                                            managedStack, obj, this, declaringType);
-                                    }
                                     managedStack[ptr - evaluationStackBase] = null;
                                     managedStack[evaluationStackPointer - 1 - evaluationStackBase] = null;
                                     evaluationStackPointer = ptr;
@@ -1271,25 +1277,31 @@ namespace IFix.Core
                                 if (fieldIndex >= 0)
                                 {
                                     var fieldInfo = fieldInfos[fieldIndex];
-                                    Type fieldType = null;
-
-                                    object fieldValue = null;
-
                                     if (fieldInfo == null)
                                     {
                                         newFieldInfos[fieldIndex].CheckInit(this, null);
 
-                                        fieldType = newFieldInfos[fieldIndex].FieldType;
-                                        fieldValue = newFieldInfos[fieldIndex].GetValue(null);
+                                        Type fieldType = newFieldInfos[fieldIndex].FieldType;
+                                        object fieldValue = newFieldInfos[fieldIndex].GetValue(null);
+
+                                        EvaluationStackOperation.PushObject(evaluationStackBase, evaluationStackPointer,
+                                            managedStack, fieldValue, fieldType);
                                     }
                                     else
                                     {
-                                        fieldType = fieldInfo.FieldType;
-                                        fieldValue = fieldInfo.GetValue(null);
+                                        var externLoader = externLoaders[fieldIndex];
+                                        if (externLoader == null)
+                                        {
+#if ENABLE_IL2CPP
+                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
+#else
+                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
+#endif
+                                            externLoaders[fieldIndex] = externLoader = externAccessor.Load;
+                                            externStorers[fieldIndex] = externAccessor.Store;
+                                        }
+                                        externLoader(this, evaluationStackBase, evaluationStackPointer, managedStack);
                                     }
-                                    
-                                    EvaluationStackOperation.PushObject(evaluationStackBase, evaluationStackPointer,
-                                        managedStack, fieldValue, fieldType);
                                 }
                                 else
                                 {
@@ -1816,28 +1828,30 @@ namespace IFix.Core
                                 var fieldIndex = pc->Operand;
                                 if (fieldIndex >= 0)
                                 {
-                                    var fieldInfo = fieldInfos[fieldIndex];
-                                    Type filedType = null;
-                                    
+                                    var fieldInfo = fieldInfos[fieldIndex];                                    
                                     if (fieldInfo == null)
                                     {
-                                        filedType = newFieldInfos[fieldIndex].FieldType;
-                                    }
-                                    else
-                                    {
-                                        filedType = fieldInfo.FieldType;
-                                    }
+                                        Type filedType = newFieldInfos[fieldIndex].FieldType;
 
-                                    var value = EvaluationStackOperation.ToObject(evaluationStackBase,
-                                        evaluationStackPointer - 1, managedStack, filedType, this);
-                                    
-                                    if (fieldInfo == null)
-                                    {
+                                        var value = EvaluationStackOperation.ToObject(evaluationStackBase,
+                                            evaluationStackPointer - 1, managedStack, filedType, this);
+
                                         newFieldInfos[fieldIndex].SetValue(null, value);
                                     }
                                     else
                                     {
-                                        fieldInfo.SetValue(null, value);
+                                        var externStorer = externLoaders[fieldIndex];
+                                        if (externStorer == null)
+                                        {
+#if ENABLE_IL2CPP
+                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
+#else
+                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
+#endif
+                                            externLoaders[fieldIndex] = externAccessor.Load;
+                                            externStorers[fieldIndex] = externStorer = externAccessor.Store;
+                                        }
+                                        externStorer(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
                                     }
                                 }
                                 else

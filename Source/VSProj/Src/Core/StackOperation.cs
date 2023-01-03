@@ -534,6 +534,148 @@ namespace IFix.Core
                     }
             }
         }
+
+#if ENABLE_IL2CPP
+        public static unsafe void ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
+        {
+            switch (evaluationStackPointer->Type)
+            {
+                case ValueType.Integer:
+                    switch (type)
+                    {
+                        case DynamicBridge.Type.DB_I1:
+                            *(sbyte*)value = (sbyte)evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_U1:
+                            *(byte*)value = (byte)evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_I2:
+                            *(short*)value = (short)evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_U2:
+                            *(ushort*)value = (ushort)evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_I4:
+                            *(int*)value = evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_U4:
+                            *(uint*)value = (uint)evaluationStackPointer->Value1;
+                            break;
+                        default:
+                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.Long:
+                    switch (type)
+                    {
+                        case DynamicBridge.Type.DB_I8:
+                            *(long*)value = *(long*)&evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_U8:
+                            *(ulong*)value = *(ulong*)&evaluationStackPointer->Value1;
+                            break;
+                        case DynamicBridge.Type.DB_PTR:
+                            *(void**)value = *(void**)&evaluationStackPointer->Value1;
+                            break;
+                        default:
+                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.Float:
+                    if (type == DynamicBridge.Type.DB_R4)
+                    {
+                        *(float*)value = *(float*)&evaluationStackPointer->Value1;
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.Double:
+                    if (type == DynamicBridge.Type.DB_R8)
+                    {
+                        *(double*)value = *(double*)&evaluationStackPointer->Value1;
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.Object:
+                    {
+                        switch (type)
+                        {
+                            case DynamicBridge.Type.DB_STR:
+                            case DynamicBridge.Type.DB_OBJ:
+                                *(void**)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(managedStack[evaluationStackPointer->Value1]).ToPointer();
+                                break;
+                            default:
+                                throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                        }
+                    }
+                    break;
+                default:
+                    throw new ArgumentException($"argument unsupported, formal: {evaluationStackPointer->Type}, actual: {type}");
+            }
+        }
+
+        public static unsafe void PushValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
+        {
+            switch (type)
+            {
+                case DynamicBridge.Type.DB_I1:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    evaluationStackPointer->Value1 = *(sbyte*)value;
+                    break;
+                case DynamicBridge.Type.DB_U1:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    evaluationStackPointer->Value1 = *(byte*)value;
+                    break;
+                case DynamicBridge.Type.DB_I2:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    evaluationStackPointer->Value1 = *(short*)value;
+                    break;
+                case DynamicBridge.Type.DB_U2:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    evaluationStackPointer->Value1 = *(ushort*)value;
+                    break;
+                case DynamicBridge.Type.DB_I4:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    evaluationStackPointer->Value1 = *(int*)value;
+                    break;
+                case DynamicBridge.Type.DB_U4:
+                    evaluationStackPointer->Type = ValueType.Integer;
+                    *(uint*)&evaluationStackPointer->Value1 = *(uint*)value;
+                    break;
+                case DynamicBridge.Type.DB_I8:
+                    evaluationStackPointer->Type = ValueType.Long;
+                    *(long*)&evaluationStackPointer->Value1 = *(long*)value;
+                    break;
+                case DynamicBridge.Type.DB_U8:
+                    evaluationStackPointer->Type = ValueType.Long;
+                    *(ulong*)&evaluationStackPointer->Value1 = *(ulong*)value;
+                    break;
+                case DynamicBridge.Type.DB_R4:
+                    evaluationStackPointer->Type = ValueType.Float;
+                    *(float*)&evaluationStackPointer->Value1 = *(float*)value;
+                    break;
+                case DynamicBridge.Type.DB_R8:
+                    evaluationStackPointer->Type = ValueType.Double;
+                    *(double*)&evaluationStackPointer->Value1 = *(double*)value;
+                    break;
+                case DynamicBridge.Type.DB_STR:
+                case DynamicBridge.Type.DB_OBJ:
+                    evaluationStackPointer->Type = ValueType.Object;
+                    evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+                    managedStack[evaluationStackPointer->Value1] = DynamicBridge.IL2CPPBridge.PointerToObject((IntPtr)(*(void**)value));
+                    break;
+                case DynamicBridge.Type.DB_PTR:
+                    evaluationStackPointer->Type = ValueType.Long;
+                    *(void**)&evaluationStackPointer->Value1 = *(void**)value;
+                    break;
+            }
+        }
+#endif
     }
 
     unsafe public struct Call
