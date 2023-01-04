@@ -1,6 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bridge.CSharp", "Bridge.CSharp.csproj", "{210C6682-8DCC-E1B8-5607-2B36C2862695}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IFix.Core", "IFix.Core.csproj", "{ECFB8D71-5866-42E8-A1A4-F38D0D4E203D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IFix", "IFix.csproj", "{F54E867C-E185-870D-8A72-6D107688030F}"
@@ -25,6 +27,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{210C6682-8DCC-E1B8-5607-2B36C2862695}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{210C6682-8DCC-E1B8-5607-2B36C2862695}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{210C6682-8DCC-E1B8-5607-2B36C2862695}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{210C6682-8DCC-E1B8-5607-2B36C2862695}.Release|Any CPU.Build.0 = Release|Any CPU
 		{ECFB8D71-5866-42E8-A1A4-F38D0D4E203D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{ECFB8D71-5866-42E8-A1A4-F38D0D4E203D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ECFB8D71-5866-42E8-A1A4-F38D0D4E203D}.Release|Any CPU.ActiveCfg = Release|Any CPU

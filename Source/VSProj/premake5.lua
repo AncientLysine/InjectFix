@@ -18,6 +18,32 @@ configuration "Release"
 configuration "vs*"
     defines { "" }
 
+project "Bridge.CSharp"
+language "C#"
+kind "SharedLib"
+framework "3.5"
+targetdir "./Lib"
+
+files
+{
+    "ThirdParty/DynBridge/CSharp/*.cs",
+}
+
+links
+{
+    "System",
+    "System.Core",
+}
+
+configuration { "Debug*" }
+    defines { "DEBUG" }
+    symbols "On"
+    clr "Unsafe"
+ 
+configuration { "Release*" }
+    flags   { "Optimize" }
+    clr "Unsafe"
+
 project "IFix.Core"
 language "C#"
 kind "SharedLib"
@@ -35,12 +61,14 @@ files
 defines
 {
 	"UNITY_IPHONE",
+	"ENABLE_IL2CPP",
 }
 
 links
 {
     "System",
     "System.Core",
+    "Bridge.CSharp",
 }
 
 configuration { "Debug*" }

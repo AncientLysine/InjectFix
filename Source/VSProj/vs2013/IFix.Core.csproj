@@ -20,7 +20,7 @@
     <OutputPath>..\Lib\</OutputPath>
     <BaseIntermediateOutputPath>obj\Any CPU\Debug\IFix.Core\</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)</IntermediateOutputPath>
-    <DefineConstants>_DEBUG;TRACE;;UNITY_IPHONE;DEBUG</DefineConstants>
+    <DefineConstants>_DEBUG;TRACE;;UNITY_IPHONE;ENABLE_IL2CPP;DEBUG</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -32,7 +32,7 @@
     <OutputPath>..\Lib\</OutputPath>
     <BaseIntermediateOutputPath>obj\Any CPU\Release\IFix.Core\</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)</IntermediateOutputPath>
-    <DefineConstants>;UNITY_IPHONE</DefineConstants>
+    <DefineConstants>;UNITY_IPHONE;ENABLE_IL2CPP</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -54,6 +54,12 @@
     <Compile Include="..\Src\Core\DataDefine.cs">
       <Link>Src\Core\DataDefine.cs</Link>
     </Compile>
+    <Compile Include="..\Src\Core\DynBridgeFieldAccessor.cs">
+      <Link>Src\Core\DynBridgeFieldAccessor.cs</Link>
+    </Compile>
+    <Compile Include="..\Src\Core\DynBridgeMethodInvoker.cs">
+      <Link>Src\Core\DynBridgeMethodInvoker.cs</Link>
+    </Compile>
     <Compile Include="..\Src\Core\GenericDelegate.cs">
       <Link>Src\Core\GenericDelegate.cs</Link>
     </Compile>
@@ -65,6 +71,9 @@
     </Compile>
     <Compile Include="..\Src\Core\ObjectClone.cs">
       <Link>Src\Core\ObjectClone.cs</Link>
+    </Compile>
+    <Compile Include="..\Src\Core\ReflectionFieldAccessor.cs">
+      <Link>Src\Core\ReflectionFieldAccessor.cs</Link>
     </Compile>
     <Compile Include="..\Src\Core\ReflectionMethodInvoker.cs">
       <Link>Src\Core\ReflectionMethodInvoker.cs</Link>
@@ -89,6 +98,10 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="Bridge.CSharp.csproj">
+      <Project>{210C6682-8DCC-E1B8-5607-2B36C2862695}</Project>
+      <Name>Bridge.CSharp</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.

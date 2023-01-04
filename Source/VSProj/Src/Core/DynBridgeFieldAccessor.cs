@@ -55,10 +55,15 @@ namespace IFix.Core
                 IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                 if (ptr == IntPtr.Zero)
                 {
-                    throw new NullReferenceException(declaringType + "." + fieldName);
+                    throw new NullReferenceException($"{declaringType}.{fieldName}");
                 }
 
-                DynamicBridge.Bridge.InvokeMethod(ref setter, ptr, val);
+                DynamicBridge.Extras extras = new DynamicBridge.Extras();
+                DynamicBridge.Bridge.InvokeMethodUnchecked(ref setter, (long)ptr, val, &extras);
+                if (extras.errorCode != 0)
+                {
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                }
 
                 //如果field，array元素是值类型，需要重新update回去
                 if ((ins->Type == ValueType.FieldReference

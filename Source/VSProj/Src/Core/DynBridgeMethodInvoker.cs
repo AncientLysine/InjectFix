@@ -76,7 +76,11 @@ namespace IFix.Core
             try
             {
                 long p0 = 0, p1 = 0;
-                DynamicBridge.Extras extras = new DynamicBridge.Extras(1024);
+                long* buffer = stackalloc long[8];
+                DynamicBridge.Extras* extras = (DynamicBridge.Extras*)buffer;
+                extras->errorCode = 0;
+                extras->capacity = (uint)(sizeof(long) * 8 - sizeof(DynamicBridge.Extras) + DynamicBridge.Extras.DEF_STACK_CAP);
+                extras->position = 0;
                 int paramStart = 0;
                 if (hasThis && !isInstantiate)
                 {
@@ -113,15 +117,32 @@ namespace IFix.Core
                         }
                         long pi = 0;
                         EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[i], call.managedStack, paramType, &pi);
-                        Buffer.MemoryCopy(&pi, &extras.stack[extras.position], extras.capacity - extras.position, paramSize);
-                        extras.position += (uint)paramSize;
+#if NET_4_6
+                        Buffer.MemoryCopy(&pi, &extras->stack[extras->position], extras->capacity - extras->position, paramSize);
+#else
+                        if (extras->position + paramSize > extras->capacity)
+                        {
+                            throw new TargetException($"can not invoke method [{declaringType}.{methodName}], stack overflow");
+                        }
+                        byte* dst = &extras->stack[extras->position];
+                        byte* src = (byte*)&pi;
+                        for (int idx = 0; idx < paramSize; ++idx)
+                        {
+                            dst[idx] = src[idx];
+                        }
+#endif
+                        extras->position += (uint)paramSize;
                     }
                 }
                 if (hasThis && p0 == 0)
                 {
                     throw new TargetException($"can not invoke method [{declaringType}.{methodName}], Non-static method require instance but got null.");
                 }
-                long rv = DynamicBridge.Bridge.InvokeMethod<long, long, long>(ref method, p0, p1, ref extras);
+                long rv = DynamicBridge.Bridge.InvokeMethodUnchecked(ref method, p0, p1, extras);
+                if (extras->errorCode != 0)
+                {
+                    throw new TargetException($"can not invoke method [{declaringType}.{methodName}], error code: {extras->errorCode}");
+                }
                 if ((DynamicBridge.Type)method.returnType != DynamicBridge.Type.DB_VOID)
                 {
                     //call.PushObjectAsResult(rv, returnType);

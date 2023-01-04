@@ -1,0 +1,4 @@
+[submodule "Source/VSProj/ThirdParty/DynBridge"]
+	path = Source/VSProj/ThirdParty/DynBridge
+	url = https://git.woa.com/lysineliu/DynBridge.git
+	branch = iFix
