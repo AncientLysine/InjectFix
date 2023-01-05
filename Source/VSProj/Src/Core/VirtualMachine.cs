@@ -1840,7 +1840,7 @@ namespace IFix.Core
                                     }
                                     else
                                     {
-                                        var externStorer = externLoaders[fieldIndex];
+                                        var externStorer = externStorers[fieldIndex];
                                         if (externStorer == null)
                                         {
 #if ENABLE_IL2CPP
