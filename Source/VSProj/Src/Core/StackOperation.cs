@@ -575,7 +575,7 @@ namespace IFix.Core
                             *(ulong*)value = *(ulong*)&evaluationStackPointer->Value1;
                             break;
                         case DynamicBridge.Type.DB_PTR:
-                            *(void**)value = *(void**)&evaluationStackPointer->Value1;
+                            *(IntPtr*)value = *(IntPtr*)&evaluationStackPointer->Value1;
                             break;
                         default:
                             throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
@@ -602,16 +602,34 @@ namespace IFix.Core
                     }
                     break;
                 case ValueType.Object:
+                    switch (type)
                     {
-                        switch (type)
-                        {
-                            case DynamicBridge.Type.DB_STR:
-                            case DynamicBridge.Type.DB_OBJ:
-                                *(void**)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(managedStack[evaluationStackPointer->Value1]).ToPointer();
-                                break;
-                            default:
-                                throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
-                        }
+                        case DynamicBridge.Type.DB_STR:
+                        case DynamicBridge.Type.DB_OBJ:
+                            var obj = managedStack[evaluationStackPointer->Value1];
+                            *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
+                            break;
+                        default:
+                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.ValueType:
+                    switch (type)
+                    {
+                        case DynamicBridge.Type.DB_OBJ:
+                            var obj = managedStack[evaluationStackPointer->Value1];
+                            *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
+                            break;
+                        case DynamicBridge.Type.DB_VAL:
+                            throw new ArgumentException($"argument unsupported, formal: {evaluationStackPointer->Type}, actual: {type}");
+                        default:
+                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    }
+                    break;
+                case ValueType.StackReference:
+                    {
+                        var des = *(Value**)&evaluationStackPointer->Value1;
+                        ToValue(evaluationStackBase, des, managedStack, type, value);
                     }
                     break;
                 default:
@@ -665,14 +683,69 @@ namespace IFix.Core
                     break;
                 case DynamicBridge.Type.DB_STR:
                 case DynamicBridge.Type.DB_OBJ:
-                    evaluationStackPointer->Type = ValueType.Object;
-                    evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
-                    managedStack[evaluationStackPointer->Value1] = DynamicBridge.IL2CPPBridge.PointerToObject((IntPtr)(*(void**)value));
+                    Type managedType = null;
+                    var obj = DynamicBridge.IL2CPPBridge.PointerToObject(*(IntPtr*)value);
+                    if (obj == null || (managedType = obj.GetType()).IsClass)
+                    {
+                        evaluationStackPointer->Type = ValueType.Object;
+                        evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+                        managedStack[evaluationStackPointer->Value1] = obj;
+                    }
+                    else if (managedType.IsPrimitive)
+                    {
+                        if (managedType == typeof(int))
+                        {
+                            evaluationStackPointer->Type = ValueType.Integer;
+                            evaluationStackPointer->Value1 = (int)obj;
+                        }
+                        else if (managedType == typeof(uint))
+                        {
+                            evaluationStackPointer->Type = ValueType.Integer;
+                            *(uint*)&evaluationStackPointer->Value1 = (uint)obj;
+                        }
+                        else if (managedType == typeof(long))
+                        {
+                            evaluationStackPointer->Type = ValueType.Long;
+                            *(long*)&evaluationStackPointer->Value1 = (long)obj;
+                        }
+                        else if (managedType == typeof(ulong))
+                        {
+                            evaluationStackPointer->Type = ValueType.Long;
+                            *(ulong*)&evaluationStackPointer->Value1 = (ulong)obj;
+                        }
+                        else if (managedType == typeof(float))
+                        {
+                            evaluationStackPointer->Type = ValueType.Float;
+                            *(float*)&evaluationStackPointer->Value1 = (float)obj;
+                        }
+                        else if (managedType == typeof(double))
+                        {
+                            evaluationStackPointer->Type = ValueType.Double;
+                            *(double*)&evaluationStackPointer->Value1 = (double)obj;
+                        }
+                        else
+                        {
+                            evaluationStackPointer->Type = ValueType.Integer;
+                            evaluationStackPointer->Value1 = Convert.ToInt32(obj);
+                        }
+                    }
+                    else if (managedType.IsValueType)
+                    {
+                        evaluationStackPointer->Type = ValueType.ValueType;
+                        evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+                        managedStack[evaluationStackPointer->Value1] = obj;
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"return unsupported, formal: {managedType}, actual: {type}");
+                    }
                     break;
                 case DynamicBridge.Type.DB_PTR:
                     evaluationStackPointer->Type = ValueType.Long;
-                    *(void**)&evaluationStackPointer->Value1 = *(void**)value;
+                    *(IntPtr*)&evaluationStackPointer->Value1 = *(IntPtr*)value;
                     break;
+                default:
+                    throw new ArgumentException($"return unsupported, formal: Unknown, actual: {type}");
             }
         }
 #endif

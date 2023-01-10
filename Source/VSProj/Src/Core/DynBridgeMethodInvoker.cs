@@ -8,6 +8,7 @@
 using System;
 using System.Reflection;
 
+#if ENABLE_IL2CPP
 namespace IFix.Core
 {
     internal class DynBridgeMethodInvoker
@@ -33,7 +34,8 @@ namespace IFix.Core
 
         public DynBridgeMethodInvoker(MethodBase method)
         {
-            DynamicBridge.IL2CPPBridge.GetMethod(method as MethodInfo, out this.method, DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_STRUCT_INSTANCE | DynamicBridge.IL2CPPBridge.Flag.DB_KEEPING_IL2CPP_STRING);
+            var flag = DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_STRUCT_INSTANCE | DynamicBridge.IL2CPPBridge.Flag.DB_KEEPING_IL2CPP_STRING;
+            
             methodName = method.Name;
             declaringType = method.DeclaringType;
             var paramerInfos = method.GetParameters();
@@ -44,8 +46,9 @@ namespace IFix.Core
 
             for (int i = 0; i < paramerInfos.Length; i++)
             {
-                outFlags[i] = !paramerInfos[i].IsIn && paramerInfos[i].IsOut;
-                if (paramerInfos[i].ParameterType.IsByRef)
+                var paramInfo = paramerInfos[i];
+                outFlags[i] = !paramInfo.IsIn && paramInfo.IsOut;
+                if (paramInfo.ParameterType.IsByRef)
                 {
                     refFlags[i] = true;
                 }
@@ -53,21 +56,33 @@ namespace IFix.Core
                 {
                     refFlags[i] = false;
                 }
+                if (paramInfo.ParameterType.IsValueType && !paramInfo.ParameterType.IsPrimitive)
+                {
+                    flag |= DynamicBridge.IL2CPPBridge.Flag.DB_USING_IL2CPP_RUNTIME_INVOKER;
+                }
             }
+            Type returnType;
             if (method.IsConstructor)
             {
+                returnType = (method as ConstructorInfo).DeclaringType;
                 hasReturn = true;
             }
             else
             {
-                Type returnType = (method as MethodInfo).ReturnType;
+                returnType = (method as MethodInfo).ReturnType;
                 hasReturn = returnType != typeof(void);
+            }
+            if (!hasReturn || returnType.IsClass)
+            {
+                flag |= DynamicBridge.IL2CPPBridge.Flag.DB_USING_IL2CPP_RUNTIME_INVOKER;
             }
             hasThis = !method.IsStatic;
             bool isNullableMethod = method.DeclaringType.IsGenericType
                 && method.DeclaringType.GetGenericTypeDefinition() == typeof(Nullable<>);
             isNullableHasValue = isNullableMethod && method.Name == "get_HasValue";
             isNullableValue = isNullableMethod && method.Name == "get_Value";
+
+            DynamicBridge.IL2CPPBridge.GetMethod(method, out this.method, flag);
         }
 
         public unsafe void Invoke(VirtualMachine virtualMachine, ref Call call, bool isInstantiate)
@@ -171,3 +186,4 @@ namespace IFix.Core
         }
     }
 }
+#endif

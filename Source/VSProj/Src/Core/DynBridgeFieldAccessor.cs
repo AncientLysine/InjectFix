@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 
+#if ENABLE_IL2CPP
 namespace IFix.Core
 {
     internal class DynBridgeFieldAccessor
@@ -17,10 +18,13 @@ namespace IFix.Core
 
         public DynBridgeFieldAccessor(FieldInfo fieldInfo)
         {
-            DynamicBridge.IL2CPPBridge.GetField(fieldInfo, out getter, out setter, DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_STRUCT_INSTANCE | DynamicBridge.IL2CPPBridge.Flag.DB_KEEPING_IL2CPP_STRING);
+            var flag = DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_STRUCT_INSTANCE | DynamicBridge.IL2CPPBridge.Flag.DB_KEEPING_IL2CPP_STRING;
+            
             fieldName = fieldInfo.Name;
             declaringType = fieldInfo.DeclaringType;
             isStatic = fieldInfo.IsStatic;
+
+            DynamicBridge.IL2CPPBridge.GetField(fieldInfo, out getter, out setter, flag);
         }
 
         public unsafe void Load(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
@@ -82,3 +86,4 @@ namespace IFix.Core
         }
     }
 }
+#endif
