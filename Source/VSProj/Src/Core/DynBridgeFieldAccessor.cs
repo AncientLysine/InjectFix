@@ -19,20 +19,25 @@ namespace IFix.Core
         public DynBridgeFieldAccessor(FieldInfo fieldInfo)
         {
             var flag = DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_STRUCT_INSTANCE | DynamicBridge.IL2CPPBridge.Flag.DB_KEEPING_IL2CPP_STRING;
-            
+
             fieldName = fieldInfo.Name;
             declaringType = fieldInfo.DeclaringType;
             isStatic = fieldInfo.IsStatic;
+            Type fieldType = fieldInfo.FieldType;
+            if (fieldType.IsValueType && !fieldType.IsPrimitive)
+            {
+                flag |= DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_FIELD_ACCESSOR;
+            }
 
             DynamicBridge.IL2CPPBridge.GetField(fieldInfo, out getter, out setter, flag);
         }
 
-        public unsafe void Load(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public unsafe void Load(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             long val;
             if (!isStatic)
             {
-                object obj = EvaluationStackOperation.ToObject(evaluationStackBase, evaluationStackPointer, managedStack, declaringType, vm, false);
+                object obj = EvaluationStackOperation.ToObject(evaluationStackBase, evaluationStackPointer, managedStack, declaringType, virtualMachine, false);
                 IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                 if (ptr == IntPtr.Zero)
                 {
@@ -48,14 +53,14 @@ namespace IFix.Core
             EvaluationStackOperation.PushValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val);
         }
 
-        public unsafe void Store(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public unsafe void Store(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             long val;
-            EvaluationStackOperation.ToValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val);
+            EvaluationStackOperation.ToValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val, virtualMachine);
             if (!isStatic)
             {
                 Value* ins = evaluationStackPointer - 1;
-                object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ins, managedStack, declaringType, vm, false);
+                object obj = EvaluationStackOperation.ToObject(evaluationStackBase, ins, managedStack, declaringType, virtualMachine, false);
                 IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                 if (ptr == IntPtr.Zero)
                 {
@@ -76,7 +81,7 @@ namespace IFix.Core
                     || ins->Type == ValueType.ArrayReference)
                     && declaringType.IsValueType)
                 {
-                    EvaluationStackOperation.UpdateReference(evaluationStackBase, ins, managedStack, obj, vm, declaringType);
+                    EvaluationStackOperation.UpdateReference(evaluationStackBase, ins, managedStack, obj, virtualMachine, declaringType);
                 }
             }
             else

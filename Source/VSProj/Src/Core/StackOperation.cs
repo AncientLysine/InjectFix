@@ -536,7 +536,7 @@ namespace IFix.Core
         }
 
 #if ENABLE_IL2CPP
-        public static unsafe void ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
+        public static unsafe void ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine, bool valueTypeClone = true)
         {
             switch (evaluationStackPointer->Type)
             {
@@ -562,7 +562,7 @@ namespace IFix.Core
                             *(uint*)value = (uint)evaluationStackPointer->Value1;
                             break;
                         default:
-                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                            throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.Long:
@@ -578,7 +578,7 @@ namespace IFix.Core
                             *(IntPtr*)value = *(IntPtr*)&evaluationStackPointer->Value1;
                             break;
                         default:
-                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                            throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.Float:
@@ -588,7 +588,7 @@ namespace IFix.Core
                     }
                     else
                     {
-                        throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                        throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.Double:
@@ -598,7 +598,7 @@ namespace IFix.Core
                     }
                     else
                     {
-                        throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                        throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.Object:
@@ -610,7 +610,7 @@ namespace IFix.Core
                             *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                             break;
                         default:
-                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                            throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.ValueType:
@@ -618,22 +618,26 @@ namespace IFix.Core
                     {
                         case DynamicBridge.Type.DB_OBJ:
                             var obj = managedStack[evaluationStackPointer->Value1];
+                            if (obj != null && valueTypeClone)
+                            {
+                                obj = virtualMachine.objectClone.Clone(obj);
+                            }
                             *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                             break;
                         case DynamicBridge.Type.DB_VAL:
-                            throw new ArgumentException($"argument unsupported, formal: {evaluationStackPointer->Type}, actual: {type}");
+                            throw new ArgumentException($"argument unsupported, formal: {type}, actual: {evaluationStackPointer->Type}");
                         default:
-                            throw new ArgumentException($"argument mismatch, formal: {evaluationStackPointer->Type}, actual: {type}");
+                            throw new ArgumentException($"argument mismatch, formal: {type}, actual: {evaluationStackPointer->Type}");
                     }
                     break;
                 case ValueType.StackReference:
                     {
                         var des = *(Value**)&evaluationStackPointer->Value1;
-                        ToValue(evaluationStackBase, des, managedStack, type, value);
+                        ToValue(evaluationStackBase, des, managedStack, type, value, virtualMachine, valueTypeClone);
                     }
                     break;
                 default:
-                    throw new ArgumentException($"argument unsupported, formal: {evaluationStackPointer->Type}, actual: {type}");
+                    throw new ArgumentException($"argument unsupported, formal: {type}, actual: {evaluationStackPointer->Type}");
             }
         }
 
@@ -737,7 +741,7 @@ namespace IFix.Core
                     }
                     else
                     {
-                        throw new ArgumentException($"return unsupported, formal: {managedType}, actual: {type}");
+                        throw new ArgumentException($"return unsupported, formal: {type}, actual: {managedType}");
                     }
                     break;
                 case DynamicBridge.Type.DB_PTR:
@@ -745,7 +749,7 @@ namespace IFix.Core
                     *(IntPtr*)&evaluationStackPointer->Value1 = *(IntPtr*)value;
                     break;
                 default:
-                    throw new ArgumentException($"return unsupported, formal: Unknown, actual: {type}");
+                    throw new ArgumentException($"return unsupported, formal: {type}");
             }
         }
 #endif

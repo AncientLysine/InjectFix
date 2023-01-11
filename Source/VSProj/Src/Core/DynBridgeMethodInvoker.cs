@@ -7,6 +7,7 @@
 
 using System;
 using System.Reflection;
+using System.Runtime.Remoting.Activation;
 
 #if ENABLE_IL2CPP
 namespace IFix.Core
@@ -96,42 +97,61 @@ namespace IFix.Core
                 extras->errorCode = 0;
                 extras->capacity = (uint)(sizeof(long) * 8 - sizeof(DynamicBridge.Extras) + DynamicBridge.Extras.DEF_STACK_CAP);
                 extras->position = 0;
-                int paramStart = 0;
-                if (hasThis && !isInstantiate)
+
+                object newObj = null;
+                if (isInstantiate)
                 {
-                    paramStart = 1;
+                    newObj = Activator.CreateInstance(declaringType);
                 }
-                int count = paramCount + paramStart;
-                if (count > 0)
+
+                int outStart = 0;
+                if (hasThis)
                 {
-                    if (paramStart > 0 || !outFlags[0])
+                    outStart = 1;
+                }
+                int argStart = 0;
+                if (isInstantiate)
+                {
+                    argStart = 1;
+                }
+                int count = method.paramCount;
+                if (count >= 1)
+                { 
+                    if (isInstantiate)
+                    {
+                        *(IntPtr*)&p0 = DynamicBridge.IL2CPPBridge.ObjectToPointer(newObj);
+                    }
+                    else if (hasThis || !outFlags[0])
                     {
                         DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[0];
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[0], call.managedStack, paramType, &p0);
+                        int argIndex = 0;
+                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &p0, virtualMachine, !hasThis);
                     }
                 }
-                if (count > 1)
-                {
-                    if (!outFlags[1 - paramStart])
+                if (count >= 2)
+                { 
+                    if (!outFlags[1 - outStart])
                     {
                         DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[1];
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[1], call.managedStack, paramType, &p1);
+                        int argIndex = 1 - argStart;
+                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &p1, virtualMachine);
                     }
                 }
-                for (int i = count - 1; i >= 2; --i)
+                for (int reverse = count - 1; reverse >= 2; --reverse)
                 {
-                    if (!outFlags[i - paramStart])
+                    if (!outFlags[reverse - outStart])
                     {
                         //args[i] = EvaluationStackOperation.ToObject(call.evaluationStackBase, pArg, managedStack,
                         //    rawTypes[i], virtualMachine);
-                        DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[i];
+                        DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[reverse];
                         int paramSize = DynamicBridge.Bridge.SizeOfType(paramType);
                         if (paramSize < 0)
                         {
                             break;
                         }
+                        int argIndex = reverse - argStart;
                         long pi = 0;
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[i], call.managedStack, paramType, &pi);
+                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &pi, virtualMachine);
 #if NET_4_6
                         Buffer.MemoryCopy(&pi, &extras->stack[extras->position], extras->capacity - extras->position, paramSize);
 #else
@@ -158,7 +178,12 @@ namespace IFix.Core
                 {
                     throw new TargetException($"can not invoke method [{declaringType}.{methodName}], error code: {extras->errorCode}");
                 }
-                if ((DynamicBridge.Type)method.returnType != DynamicBridge.Type.DB_VOID)
+                if (isInstantiate)
+                {
+                    call.PushObjectAsResult(newObj, declaringType);
+                    pushResult = true;
+                }
+                else if ((DynamicBridge.Type)method.returnType != DynamicBridge.Type.DB_VOID)
                 {
                     //call.PushObjectAsResult(rv, returnType);
                     EvaluationStackOperation.PushValue(call.evaluationStackBase, call.argumentBase, call.managedStack, (DynamicBridge.Type)method.returnType, &rv);
