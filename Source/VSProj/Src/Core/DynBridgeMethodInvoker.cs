@@ -26,10 +26,6 @@ namespace IFix.Core
 
         bool hasReturn;
 
-        bool[] refFlags;
-
-        bool[] outFlags;
-
         bool isNullableHasValue = false;
         bool isNullableValue = false;
 
@@ -41,23 +37,12 @@ namespace IFix.Core
             declaringType = method.DeclaringType;
             var paramerInfos = method.GetParameters();
             paramCount = paramerInfos.Length;
-            refFlags = new bool[paramCount];
-            outFlags = new bool[paramCount];
-            //args = new object[paramCount];
-
+            
             for (int i = 0; i < paramerInfos.Length; i++)
             {
                 var paramInfo = paramerInfos[i];
-                outFlags[i] = !paramInfo.IsIn && paramInfo.IsOut;
-                if (paramInfo.ParameterType.IsByRef)
-                {
-                    refFlags[i] = true;
-                }
-                else
-                {
-                    refFlags[i] = false;
-                }
-                if (paramInfo.ParameterType.IsValueType && !paramInfo.ParameterType.IsPrimitive)
+                var paramType = paramInfo.ParameterType;
+                if (paramType.IsValueType && !paramType.IsPrimitive && !paramType.IsEnum)
                 {
                     flag |= DynamicBridge.IL2CPPBridge.Flag.DB_USING_IL2CPP_RUNTIME_INVOKER;
                 }
@@ -104,70 +89,54 @@ namespace IFix.Core
                     newObj = Activator.CreateInstance(declaringType);
                 }
 
-                int outStart = 0;
-                if (hasThis)
-                {
-                    outStart = 1;
-                }
                 int argStart = 0;
                 if (isInstantiate)
                 {
                     argStart = 1;
+                    *(IntPtr*)&p0 = DynamicBridge.IL2CPPBridge.ObjectToPointer(newObj);
                 }
+                Value* pArg;
                 int count = method.paramCount;
-                if (count >= 1)
-                { 
-                    if (isInstantiate)
-                    {
-                        *(IntPtr*)&p0 = DynamicBridge.IL2CPPBridge.ObjectToPointer(newObj);
-                    }
-                    else if (hasThis || !outFlags[0])
-                    {
-                        DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[0];
-                        int argIndex = 0;
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &p0, virtualMachine, !hasThis);
-                    }
+                if (count >= 1 && !isInstantiate)
+                {
+                    pArg = &call.argumentBase[0 - argStart];
+                    DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[0];
+                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p0, virtualMachine);
                 }
                 if (count >= 2)
-                { 
-                    if (!outFlags[1 - outStart])
-                    {
-                        DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[1];
-                        int argIndex = 1 - argStart;
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &p1, virtualMachine);
-                    }
-                }
-                for (int reverse = count - 1; reverse >= 2; --reverse)
                 {
-                    if (!outFlags[reverse - outStart])
+                    pArg = &call.argumentBase[1 - argStart];
+                    DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[1];
+                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p1, virtualMachine);
+                }
+                for (int i = count - 1; i >= 2; --i)
+                {
+                    //args[i] = EvaluationStackOperation.ToObject(call.evaluationStackBase, pArg, managedStack,
+                    //    rawTypes[i], virtualMachine);
+                    pArg = &call.argumentBase[i - argStart];
+                    DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[i];
+                    int paramSize = DynamicBridge.Bridge.SizeOfType(paramType);
+                    if (paramSize < 0)
                     {
-                        //args[i] = EvaluationStackOperation.ToObject(call.evaluationStackBase, pArg, managedStack,
-                        //    rawTypes[i], virtualMachine);
-                        DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[reverse];
-                        int paramSize = DynamicBridge.Bridge.SizeOfType(paramType);
-                        if (paramSize < 0)
-                        {
-                            break;
-                        }
-                        int argIndex = reverse - argStart;
-                        long pi = 0;
-                        EvaluationStackOperation.ToValue(call.evaluationStackBase, &call.argumentBase[argIndex], call.managedStack, paramType, &pi, virtualMachine);
-#if NET_4_6
-                        Buffer.MemoryCopy(&pi, &extras->stack[extras->position], extras->capacity - extras->position, paramSize);
-#else
-                        if (extras->position + paramSize > extras->capacity)
-                        {
-                            throw new TargetException($"can not invoke method [{declaringType}.{methodName}], stack overflow");
-                        }
-                        byte* dst = &extras->stack[extras->position];
-                        byte* src = (byte*)&pi;
-                        for (int idx = 0; idx < paramSize; ++idx)
-                        {
-                            dst[idx] = src[idx];
-                        }
-#endif
-                        extras->position += (uint)paramSize;
+                        break;
                     }
+                    long pi = 0;
+                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &pi, virtualMachine);
+#if NET_4_6
+                    Buffer.MemoryCopy(&pi, &extras->stack[extras->position], extras->capacity - extras->position, paramSize);
+#else
+                    if (extras->position + paramSize > extras->capacity)
+                    {
+                        throw new TargetException($"can not invoke method [{declaringType}.{methodName}], stack overflow");
+                    }
+                    byte* dst = &extras->stack[extras->position];
+                    byte* src = (byte*)&pi;
+                    for (int idx = 0; idx < paramSize; ++idx)
+                    {
+                        dst[idx] = src[idx];
+                    }
+#endif
+                    extras->position += (uint)paramSize;
                 }
                 if (hasThis && p0 == 0)
                 {

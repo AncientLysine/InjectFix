@@ -24,7 +24,7 @@ namespace IFix.Core
             declaringType = fieldInfo.DeclaringType;
             isStatic = fieldInfo.IsStatic;
             Type fieldType = fieldInfo.FieldType;
-            if (fieldType.IsValueType && !fieldType.IsPrimitive)
+            if (fieldType.IsValueType && !fieldType.IsPrimitive && !fieldType.IsEnum)
             {
                 flag |= DynamicBridge.IL2CPPBridge.Flag.DB_BOXED_FIELD_ACCESSOR;
             }
