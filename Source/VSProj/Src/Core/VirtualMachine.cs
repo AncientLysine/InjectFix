@@ -14,14 +14,18 @@ namespace IFix.Core
     using System.IO;
     using System.Linq;
 
+#if ENABLE_IL2CPP
+    using ExternAccessor = DynBridgeFieldAccessor;
+#else
+    using ExternAccessor = ReflectionFieldAccessor;
+#endif
+
     class RuntimeException : Exception
     {
         public Exception Real { get;set;}
     }
 
     public delegate void ExternInvoker(VirtualMachine vm, ref Call call, bool isInstantiate);
-
-    public unsafe delegate void ExternAccessor(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack);
 
     internal class FieldAddr
     {
@@ -204,15 +208,11 @@ namespace IFix.Core
 
         string[] internStrings;
 
-        internal FieldInfo[] fieldInfos;
-
-        Type[] fieldDeclTypes;
+        FieldInfo[] fieldInfos;
 
         internal Dictionary<int, NewFieldInfo> newFieldInfos;
 
-        ExternAccessor[] externLoaders;
-
-        ExternAccessor[] externStorers;
+        ExternAccessor[] externAccessors;
 
         AnonymousStoreyInfo[] anonymousStoreyInfos;
 
@@ -285,8 +285,7 @@ namespace IFix.Core
             set
             {
                 fieldInfos = value;
-                externLoaders = new ExternAccessor[fieldInfos.Length];
-                externStorers = new ExternAccessor[fieldInfos.Length];
+                externAccessors = new ExternAccessor[fieldInfos.Length];
             }
         }
 
@@ -493,6 +492,22 @@ namespace IFix.Core
                 }
             }
             return null;
+        }
+
+        internal ExternAccessor GetExternAccessor(int fieldIndex)
+        {
+            var externAccessor = externAccessors[fieldIndex];
+            if (externAccessor == null)
+            {
+                var fieldInfo = fieldInfos[fieldIndex];
+                if (fieldInfo == null)
+                {
+                    return null;
+                }
+                externAccessor = new ExternAccessor(fieldInfo);
+                externAccessors[fieldIndex] = externAccessor;
+            }
+            return externAccessor;
         }
 
         //Value* traceValue = null;
@@ -1041,9 +1056,10 @@ namespace IFix.Core
                                 //_Info("Ldfld fieldIndex:" + fieldIndex);
                                 if (fieldIndex >= 0)
                                 {
-                                    var fieldInfo = fieldInfos[fieldIndex];
+                                    //var fieldInfo = fieldInfos[fieldIndex];
                                     //_Info("Ldfld fieldInfo:" + fieldInfo);
-                                    if (fieldInfo == null)
+                                    var externAccessor = GetExternAccessor(fieldIndex);
+                                    if (externAccessor == null)
                                     {
                                         string fieldName = newFieldInfos[fieldIndex].Name;
                                         Type fieldType = newFieldInfos[fieldIndex].FieldType;
@@ -1069,18 +1085,7 @@ namespace IFix.Core
                                     }
                                     else
                                     {
-                                        var externLoader = externLoaders[fieldIndex];
-                                        if (externLoader == null)
-                                        {
-#if ENABLE_IL2CPP
-                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
-#else
-                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
-#endif
-                                            externLoaders[fieldIndex] = externLoader = externAccessor.Load;
-                                            externStorers[fieldIndex] = externAccessor.Store;
-                                        }
-                                        externLoader(this, evaluationStackBase, ptr, managedStack);
+                                        externAccessor.Load(this, evaluationStackBase, ptr, managedStack);
                                     }
                                 }
                                 else
@@ -1129,8 +1134,9 @@ namespace IFix.Core
                                 var fieldIndex = pc->Operand;
                                 if (fieldIndex >= 0)
                                 {
-                                    var fieldInfo = fieldInfos[pc->Operand];
-                                    if (fieldInfo == null)
+                                    //var fieldInfo = fieldInfos[pc->Operand];
+                                    var externAccessor = GetExternAccessor(fieldIndex);
+                                    if (externAccessor == null)
                                     {
                                         string fieldName = newFieldInfos[fieldIndex].Name;
                                         Type fieldType = newFieldInfos[fieldIndex].FieldType;
@@ -1160,18 +1166,7 @@ namespace IFix.Core
                                     }
                                     else
                                     {
-                                        var externStorer = externStorers[fieldIndex];
-                                        if (externStorer == null)
-                                        {
-#if ENABLE_IL2CPP
-                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
-#else
-                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
-#endif
-                                            externLoaders[fieldIndex] = externAccessor.Load;
-                                            externStorers[fieldIndex] = externStorer = externAccessor.Store;
-                                        }
-                                        externStorer(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
+                                        externAccessor.Store(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
                                     }
 
                                     managedStack[ptr - evaluationStackBase] = null;
@@ -1276,8 +1271,9 @@ namespace IFix.Core
                                 var fieldIndex = pc->Operand;
                                 if (fieldIndex >= 0)
                                 {
-                                    var fieldInfo = fieldInfos[fieldIndex];
-                                    if (fieldInfo == null)
+                                    //var fieldInfo = fieldInfos[fieldIndex];
+                                    var externAccessor = GetExternAccessor(fieldIndex);
+                                    if (externAccessor == null)
                                     {
                                         newFieldInfos[fieldIndex].CheckInit(this, null);
 
@@ -1289,18 +1285,7 @@ namespace IFix.Core
                                     }
                                     else
                                     {
-                                        var externLoader = externLoaders[fieldIndex];
-                                        if (externLoader == null)
-                                        {
-#if ENABLE_IL2CPP
-                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
-#else
-                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
-#endif
-                                            externLoaders[fieldIndex] = externLoader = externAccessor.Load;
-                                            externStorers[fieldIndex] = externAccessor.Store;
-                                        }
-                                        externLoader(this, evaluationStackBase, evaluationStackPointer, managedStack);
+                                        externAccessor.Load(this, evaluationStackBase, evaluationStackPointer, managedStack);
                                     }
                                 }
                                 else
@@ -1828,8 +1813,9 @@ namespace IFix.Core
                                 var fieldIndex = pc->Operand;
                                 if (fieldIndex >= 0)
                                 {
-                                    var fieldInfo = fieldInfos[fieldIndex];                                    
-                                    if (fieldInfo == null)
+                                    //var fieldInfo = fieldInfos[fieldIndex];
+                                    var externAccessor = GetExternAccessor(fieldIndex);
+                                    if (externAccessor == null)
                                     {
                                         Type filedType = newFieldInfos[fieldIndex].FieldType;
 
@@ -1840,18 +1826,7 @@ namespace IFix.Core
                                     }
                                     else
                                     {
-                                        var externStorer = externStorers[fieldIndex];
-                                        if (externStorer == null)
-                                        {
-#if ENABLE_IL2CPP
-                                            var externAccessor = new DynBridgeFieldAccessor(fieldInfo);
-#else
-                                            var externAccessor = new ReflectionFieldAccessor(fieldInfo);
-#endif
-                                            externLoaders[fieldIndex] = externAccessor.Load;
-                                            externStorers[fieldIndex] = externStorer = externAccessor.Store;
-                                        }
-                                        externStorer(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
+                                        externAccessor.Store(this, evaluationStackBase, evaluationStackPointer - 1, managedStack);
                                     }
                                 }
                                 else

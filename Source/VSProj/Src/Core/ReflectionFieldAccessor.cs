@@ -24,6 +24,16 @@ namespace IFix.Core
             isStatic = fieldInfo.IsStatic;
         }
 
+        public object GetValue(object obj)
+        {
+            return fieldInfo.GetValue(obj);
+        }
+
+        public void SetValue(object obj, object val)
+        {
+            fieldInfo.SetValue(obj, val);
+        }
+
         public unsafe void Load(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             object val;

@@ -167,7 +167,7 @@ namespace IFix.Core
                 throw new NotImplementedException("Unbox a " + obj.GetType() + " to " + type);
         }
 
-        internal static object mGet(bool isArray, object root, int layer, int[] fieldIdList, FieldInfo[] fieldInfos, Dictionary<int, NewFieldInfo> newFieldInfos)
+        internal static object mGet(bool isArray, object root, int layer, int[] fieldIdList, VirtualMachine virtualMachine)
         {
             //Console.WriteLine("mGet " + root);
             var fieldId = fieldIdList[layer];
@@ -179,34 +179,32 @@ namespace IFix.Core
                 }
                 else
                 {
-                    var fieldInfo = fieldInfos[fieldId];
-                    
-                    if(fieldInfo == null)
+                    var externAccessor = virtualMachine.GetExternAccessor(fieldId);
+                    if (externAccessor == null)
                     {
-                        return newFieldInfos[fieldId].GetValue(root);
+                        return virtualMachine.newFieldInfos[fieldId].GetValue(root);
                     }
-
-                    return fieldInfo.GetValue(root);
+                    else
+                    {
+                        return externAccessor.GetValue(root);
+                    }
                 }
             }
             else
             {
-                var fieldInfo = fieldInfos[fieldId];
-
-                if(fieldInfo == null)
+                var externAccessor = virtualMachine.GetExternAccessor(fieldId);
+                if (externAccessor == null)
                 {
-                    return newFieldInfos[fieldId].GetValue(mGet(isArray, root, layer - 1, fieldIdList, fieldInfos, newFieldInfos));
+                    return virtualMachine.newFieldInfos[fieldId].GetValue(mGet(isArray, root, layer - 1, fieldIdList, virtualMachine));
                 }
-                
-                //VirtualMachine._Info("before --- " + fieldInfo);
-                var ret =  fieldInfo.GetValue(mGet(isArray, root, layer - 1, fieldIdList, fieldInfos, newFieldInfos));
-                //VirtualMachine._Info("after --- " + fieldInfo);
-                return ret;
+                else
+                {
+                    return externAccessor.GetValue(mGet(isArray, root, layer - 1, fieldIdList, virtualMachine));
+                }
             }
         }
 
-        internal static void mSet(bool isArray, object root, object val, int layer, int[] fieldIdList,
-            FieldInfo[] fieldInfos, Dictionary<int, NewFieldInfo> newFieldInfos)
+        internal static void mSet(bool isArray, object root, object val, int layer, int[] fieldIdList, VirtualMachine virtualMachine)
         {
             var fieldId = fieldIdList[layer];
             if (layer == 0)
@@ -217,38 +215,34 @@ namespace IFix.Core
                 }
                 else
                 {
-                    var fieldInfo = fieldInfos[fieldId];
-
-                    if(fieldInfo == null)
+                    var externAccessor = virtualMachine.GetExternAccessor(fieldId);
+                    if (externAccessor == null)
                     {
-                        newFieldInfos[fieldId].SetValue(root, val);
+                        virtualMachine.newFieldInfos[fieldId].SetValue(root, val);
                     }
                     else
                     {
                         //VirtualMachine._Info("set1 " + val.GetType() + " to " + fieldInfo + " of " + root.GetType()
                         //    + ", root.hc = " + root.GetHashCode());
-                        fieldInfo.SetValue(root, val);
+                        externAccessor.SetValue(root, val);
                     }
                 }
             }
             else
             {
-                var fieldInfo = fieldInfos[fieldId];
-                //VirtualMachine._Info("before get " + fieldInfo);
-                var parent = mGet(isArray, root, layer - 1, fieldIdList, fieldInfos, newFieldInfos);
-                //VirtualMachine._Info("after get " + fieldInfo);
-                //VirtualMachine._Info("before set " + fieldInfo);
-                if(fieldInfo == null)
+                var externAccessor = virtualMachine.GetExternAccessor(fieldId);
+                var parent = mGet(isArray, root, layer - 1, fieldIdList, virtualMachine);
+                if (externAccessor == null)
                 {
-                    newFieldInfos[fieldId].SetValue(parent, val);
+                    virtualMachine.newFieldInfos[fieldId].SetValue(parent, val);
                 }
                 else
                 {
-                    fieldInfo.SetValue(parent, val);
+                    externAccessor.SetValue(parent, val);
                 }
                 //VirtualMachine._Info("set2 " + val.GetType() + " to " + fieldInfo + " of " + parent.GetType());
                 //VirtualMachine._Info("after set " + fieldInfo);
-                mSet(isArray, root, parent, layer - 1, fieldIdList, fieldInfos, newFieldInfos);
+                mSet(isArray, root, parent, layer - 1, fieldIdList, virtualMachine);
             }
         }
 
@@ -363,26 +357,30 @@ namespace IFix.Core
                             var fieldIdList = fieldAddr.FieldIdList;
                             return mGet(evaluationStackPointer->Value2 != -1,
                                 fieldAddr.Object, fieldIdList.Length - 1,
-                                fieldIdList, virtualMachine.fieldInfos, virtualMachine.newFieldInfos);
+                                fieldIdList, virtualMachine);
                         }
                         else
                         {
-                            if (evaluationStackPointer->Value2 >= 0)
+                            var fieldIndex = evaluationStackPointer->Value2;
+                            if (fieldIndex >= 0)
                             {
-                                var fieldInfo = virtualMachine.fieldInfos[evaluationStackPointer->Value2];
                                 var obj = managedStack[evaluationStackPointer->Value1];
-                                if(fieldInfo == null)
+                                var externAccessor = virtualMachine.GetExternAccessor(fieldIndex);
+                                if (externAccessor == null)
                                 {
-                                    virtualMachine.newFieldInfos[evaluationStackPointer->Value2].CheckInit(virtualMachine, obj);
-                                    return virtualMachine.newFieldInfos[evaluationStackPointer->Value2].GetValue(obj);
+                                    virtualMachine.newFieldInfos[fieldIndex].CheckInit(virtualMachine, obj);
+                                    return virtualMachine.newFieldInfos[fieldIndex].GetValue(obj);
                                 }
-                                return fieldInfo.GetValue(obj);
+                                else
+                                {
+                                    return externAccessor.GetValue(obj);
+                                }
                             }
                             else
                             {
                                 var obj = managedStack[evaluationStackPointer->Value1] as AnonymousStorey;
-                                return obj.Get(-(evaluationStackPointer->Value2 + 1), type,
-                                    virtualMachine, valueTypeClone);
+                                fieldIndex = -(fieldIndex + 1);
+                                return obj.Get(fieldIndex, type, virtualMachine, valueTypeClone);
                             }
                         }
                     }
@@ -394,14 +392,16 @@ namespace IFix.Core
                         var fieldIndex = evaluationStackPointer->Value1;
                         if (fieldIndex >= 0)
                         {
-                            var fieldInfo = virtualMachine.fieldInfos[fieldIndex];
-                            if(fieldInfo == null)
+                            var externAccessor = virtualMachine.GetExternAccessor(fieldIndex);
+                            if (externAccessor == null)
                             {
                                 virtualMachine.newFieldInfos[fieldIndex].CheckInit(virtualMachine, null);
-                                
                                 return virtualMachine.newFieldInfos[fieldIndex].GetValue(null);
                             }
-                            return fieldInfo.GetValue(null);
+                            else
+                            {
+                                return externAccessor.GetValue(null);
+                            }
                         }
                         else
                         {
@@ -478,18 +478,17 @@ namespace IFix.Core
                             //}
                             mSet(evaluationStackPointer->Value2 != -1,
                                 fieldAddr.Object, obj, fieldIdList.Length - 1,
-                                fieldIdList, virtualMachine.fieldInfos, virtualMachine.newFieldInfos);
+                                fieldIdList, virtualMachine);
                         }
                         else
                         {
-                            if (evaluationStackPointer->Value2 >= 0)
+                            int fieldIndex = evaluationStackPointer->Value2;
+                            if (fieldIndex >= 0)
                             {
-
-
-                                var fieldInfo = virtualMachine.fieldInfos[evaluationStackPointer->Value2];
-                                if(fieldInfo == null)
+                                var externAccessor = virtualMachine.GetExternAccessor(fieldIndex);
+                                if (externAccessor == null)
                                 {
-                                    virtualMachine.newFieldInfos[evaluationStackPointer->Value2].SetValue(managedStack[evaluationStackPointer->Value1], obj);;
+                                    virtualMachine.newFieldInfos[fieldIndex].SetValue(managedStack[evaluationStackPointer->Value1], obj);;
                                 }
                                 else
                                 {
@@ -498,7 +497,7 @@ namespace IFix.Core
                                     //VirtualMachine._Info("update ref obj: "
                                     //    + managedStack[evaluationStackPointer->Value1]);
                                     //VirtualMachine._Info("update ref obj idx: " + evaluationStackPointer->Value1);
-                                    fieldInfo.SetValue(managedStack[evaluationStackPointer->Value1], obj);
+                                    externAccessor.SetValue(managedStack[evaluationStackPointer->Value1], obj);
                                 }
                             }
                             else
@@ -515,14 +514,14 @@ namespace IFix.Core
                         var fieldIndex = evaluationStackPointer->Value1;
                         if (fieldIndex >= 0)
                         {
-                            var fieldInfo = virtualMachine.fieldInfos[evaluationStackPointer->Value1];
-                            if(fieldInfo == null)
+                            var externAccessor = virtualMachine.GetExternAccessor(fieldIndex);
+                            if (externAccessor == null)
                             {
                                 virtualMachine.newFieldInfos[evaluationStackPointer->Value1].SetValue(null, obj);;
                             }
                             else
                             {
-                                fieldInfo.SetValue(null, obj);
+                                externAccessor.SetValue(null, obj);
                             }
                         }
                         else
@@ -536,148 +535,192 @@ namespace IFix.Core
         }
 
 #if ENABLE_IL2CPP
-        public static unsafe void ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine, bool uninitilized = false)
+        public static unsafe Action ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack,
+            DynamicBridge.Type type, void* value, VirtualMachine virtualMachine)
         {
-            if (!uninitilized)
-            {
-                switch (evaluationStackPointer->Type)
-                {
-                    case ValueType.StackReference:
-                        {
-                            var des = *(Value**)&evaluationStackPointer->Value1;
-                            ToValue(evaluationStackBase, des, managedStack, type, value, virtualMachine, true); //iFix虚拟机不初始化stack
-                        }
-                        return;
-                    case ValueType.StaticFieldReference:
-                    case ValueType.FieldReference:
-                    case ValueType.ChainFieldReference:
-                    case ValueType.ArrayReference:
-                        //TODO by Lysine
-                        break;
-                }
-            }
             bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
             bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
-            type = type & DynamicBridge.Type.DB_MSK;
-            if (type == DynamicBridge.Type.DB_STR ||
-                type == DynamicBridge.Type.DB_OBJ ||
-               (type == DynamicBridge.Type.DB_VAL && isBox))
+            DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
+            if (baseType == DynamicBridge.Type.DB_STR ||
+                baseType == DynamicBridge.Type.DB_OBJ ||
+                isBox)
             {
-                if (uninitilized)
+                if (isBox)
                 {
-                    evaluationStackPointer->Type = isBox ? ValueType.ValueType : ValueType.Object;
-                    evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+                    return GetManagedValue(ValueType.ValueType, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 }
-                if (evaluationStackPointer->Type == ValueType.Object || evaluationStackPointer->Type == ValueType.ValueType)
+                else
                 {
-                    if (isRef)
-                    {
-                        *(IntPtr*)value = Marshal.UnsafeAddrOfPinnedArrayElement(managedStack, evaluationStackPointer->Value1);
-                    }
-                    else
-                    {
-                        var obj = managedStack[evaluationStackPointer->Value1];
-                        *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
-                    }
-                    return;
+                    return GetManagedValue(ValueType.Object, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 }
             }
-            switch (type)
+            switch (baseType)
             {
                 case DynamicBridge.Type.DB_I1:
+                    return GetPrimitiveValue<sbyte>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_U1:
+                    return GetPrimitiveValue<byte>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_I2:
+                    return GetPrimitiveValue<short>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_U2:
+                    return GetPrimitiveValue<ushort>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_I4:
+                    return GetPrimitiveValue<int>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_U4:
-                    if (uninitilized)
-                    {
-                        evaluationStackPointer->Type = ValueType.Integer;
-                    }
-                    if (evaluationStackPointer->Type == ValueType.Integer)
-                    {
-                        if (isRef)
-                        {
-                            *(void**)value = &evaluationStackPointer->Value1;
-                        }
-                        else
-                        {
-                            *(int*)value = evaluationStackPointer->Value1;
-                        }
-                        return;
-                    }
-                    break;
+                    return GetPrimitiveValue<uint>(ValueType.Integer, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_I8:
+                    return GetPrimitiveValue<long>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_U8:
+                    return GetPrimitiveValue<ulong>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_PTR:
-                    if (uninitilized)
-                    {
-                        evaluationStackPointer->Type = ValueType.Long;
-                    }
-                    if (evaluationStackPointer->Type == ValueType.Long)
-                    {
-                        if (isRef)
-                        {
-                            *(void**)value = &evaluationStackPointer->Value1;
-                        }
-                        else
-                        {
-                            *(long*)value = *(long*)&evaluationStackPointer->Value1;
-                        }
-                        return;
-                    }
-                    break;
+                    return GetPrimitiveValue<IntPtr>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_R4:
-                    if (uninitilized)
-                    {
-                        evaluationStackPointer->Type = ValueType.Float;
-                    }
-                    if (evaluationStackPointer->Type == ValueType.Float)
-                    {
-                        if (isRef)
-                        {
-                            *(void**)value = &evaluationStackPointer->Value1;
-                        }
-                        else
-                        {
-                            *(float*)value = *(float*)&evaluationStackPointer->Value1;
-                        }
-                        return;
-                    }
-                    break;
+                    return GetPrimitiveValue<float>(ValueType.Float, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_R8:
-                    if (uninitilized)
-                    {
-                        evaluationStackPointer->Type = ValueType.Double;
-                    }
-                    if (evaluationStackPointer->Type == ValueType.Double)
-                    {
-                        if (isRef)
-                        {
-                            *(void**)value = &evaluationStackPointer->Value1;
-                        }
-                        else
-                        {
-                            *(double*)value = *(double*)&evaluationStackPointer->Value1;
-                        }
-                        return;
-                    }
-                    break;
+                    return GetPrimitiveValue<double>(ValueType.Double, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
             }
-            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{type}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+        }
+
+        private static unsafe Action GetManagedValue(ValueType stackType, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine)
+        {
+            bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
+            bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
+            DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
+            if (evaluationStackPointer->Type == ValueType.StackReference) //ldloca
+            {
+                //未初始化的local引用可能作为out参数反射调用
+                evaluationStackPointer = *(Value**)&evaluationStackPointer->Value1;
+                evaluationStackPointer->Type = stackType;
+                evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+            }
+            if (evaluationStackPointer->Type == stackType)
+            {
+                if (isRef)
+                {
+                    *(IntPtr*)value = Marshal.UnsafeAddrOfPinnedArrayElement(managedStack, evaluationStackPointer->Value1);
+                }
+                else
+                {
+                    object obj = managedStack[evaluationStackPointer->Value1];
+                    *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
+                }
+                return null;
+            }
+            if (evaluationStackPointer->Type == ValueType.StaticFieldReference || //ldsflda
+                evaluationStackPointer->Type == ValueType.FieldReference || //ldflda
+                evaluationStackPointer->Type == ValueType.ChainFieldReference ||
+                evaluationStackPointer->Type == ValueType.ArrayReference) //ldelema
+            {
+                //TODO by Lysine 实现Field取地址，去掉UpdateReference
+                object managedObj = ToObject(evaluationStackPointer, evaluationStackPointer, managedStack, null, virtualMachine, false);
+                IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(managedObj);
+                //复制函数参数，防止闭包过早创建
+                var esb = evaluationStackBase;
+                var esp = evaluationStackPointer;
+                var ms = managedStack;
+                var vm = virtualMachine;
+                if (isRef)
+                {
+                    IntPtr[] container = new IntPtr[] { ptr };
+                    *(IntPtr*)value = Marshal.UnsafeAddrOfPinnedArrayElement(container, 0);
+                    return () =>
+                    {
+                        object managedNew = DynamicBridge.IL2CPPBridge.PointerToObject(container[0]);
+                        UpdateReference(esb, esp, ms, managedNew, vm, null);
+                    };
+                }
+                else
+                {
+                    *(IntPtr*)value = ptr;
+                    return () =>
+                    {
+                        UpdateReference(esb, esp, ms, managedObj, vm, null);
+                    };
+                }
+            }
+            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+        }
+
+        private static unsafe Action GetPrimitiveValue<T>(ValueType stackType, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine) where T : unmanaged
+        {
+            bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
+            bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
+            DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
+            if (evaluationStackPointer->Type == ValueType.StackReference) //ldloca
+            {
+                //未初始化的local引用可能作为out参数反射调用
+                evaluationStackPointer = *(Value**)&evaluationStackPointer->Value1;
+                evaluationStackPointer->Type = stackType;
+            }
+            if (evaluationStackPointer->Type == stackType)
+            {
+                if (isRef)
+                {
+                    *(T**)value = (T*)&evaluationStackPointer->Value1;
+                }
+                else
+                {
+                    *(T*)value = *(T*)&evaluationStackPointer->Value1;
+                }
+                return null;
+            }
+            if (evaluationStackPointer->Type == ValueType.StaticFieldReference || //ldsflda
+                evaluationStackPointer->Type == ValueType.FieldReference || //ldflda
+                evaluationStackPointer->Type == ValueType.ChainFieldReference)
+            {
+                //TODO by Lysine Field实现取地址，去掉UpdateReference
+                object boxedObj = ToObject(evaluationStackBase, evaluationStackPointer, managedStack, typeof(T), virtualMachine, false);
+                T val = (T)boxedObj;
+                //复制函数参数，防止闭包过早创建
+                var esb = evaluationStackBase;
+                var esp = evaluationStackPointer;
+                var ms = managedStack;
+                var vm = virtualMachine;
+                if (isRef)
+                {
+                    T[] container = new T[] { val };
+                    *(T**)value = (T*)Marshal.UnsafeAddrOfPinnedArrayElement(container, 0);
+                    return () =>
+                    {
+                        object boxedNew = container[0];
+                        UpdateReference(esb, esp, ms, boxedNew, vm, typeof(T));
+                    };
+                }
+                else
+                {
+                    *(T*)value = val;
+                    return null;
+                }
+            }
+            if (evaluationStackPointer->Type == ValueType.ArrayReference) //ldelema
+            {
+                Array refArray = managedStack[evaluationStackPointer->Value1] as Array;
+                T* ptr = (T*)Marshal.UnsafeAddrOfPinnedArrayElement(refArray, evaluationStackPointer->Value2);
+                if (isRef)
+                {
+                    *(T**)value = ptr;
+                }
+                else
+                {
+                    *(T*)value = *ptr;
+                }
+                return null;
+            }
+            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
         }
 
         public static unsafe void PushValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
         {
             bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
             bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
-            type = type & DynamicBridge.Type.DB_MSK;
+            DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
             if (isRef)
             {
-                throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{type}{(isRef ? "&" : "")}");
+                throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
             }
-            if (type == DynamicBridge.Type.DB_STR ||
-                type == DynamicBridge.Type.DB_OBJ ||
+            if (baseType == DynamicBridge.Type.DB_STR ||
+                baseType == DynamicBridge.Type.DB_OBJ ||
                 isBox)
             {
                 Type managedType;
@@ -687,106 +730,69 @@ namespace IFix.Core
                     evaluationStackPointer->Type = ValueType.Object;
                     evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
                     managedStack[evaluationStackPointer->Value1] = managedObject;
+                    return;
                 }
                 else if (managedType.IsPrimitive)
                 {
-                    if (managedType == typeof(int))
-                    {
-                        evaluationStackPointer->Type = ValueType.Integer;
-                        evaluationStackPointer->Value1 = (int)managedObject;
-                    }
-                    else if (managedType == typeof(uint))
-                    {
-                        evaluationStackPointer->Type = ValueType.Integer;
-                        *(uint*)&evaluationStackPointer->Value1 = (uint)managedObject;
-                    }
-                    else if (managedType == typeof(long))
-                    {
-                        evaluationStackPointer->Type = ValueType.Long;
-                        *(long*)&evaluationStackPointer->Value1 = (long)managedObject;
-                    }
-                    else if (managedType == typeof(ulong))
-                    {
-                        evaluationStackPointer->Type = ValueType.Long;
-                        *(ulong*)&evaluationStackPointer->Value1 = (ulong)managedObject;
-                    }
-                    else if (managedType == typeof(float))
-                    {
-                        evaluationStackPointer->Type = ValueType.Float;
-                        *(float*)&evaluationStackPointer->Value1 = (float)managedObject;
-                    }
-                    else if (managedType == typeof(double))
-                    {
-                        evaluationStackPointer->Type = ValueType.Double;
-                        *(double*)&evaluationStackPointer->Value1 = (double)managedObject;
-                    }
-                    else
-                    {
-                        evaluationStackPointer->Type = ValueType.Integer;
-                        evaluationStackPointer->Value1 = Convert.ToInt32(managedObject);
-                    }
+                    UnboxPrimitive(evaluationStackPointer, managedObject, managedType);
+                    return;
                 }
                 else if (managedType.IsValueType)
                 {
                     evaluationStackPointer->Type = ValueType.ValueType;
                     evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
                     managedStack[evaluationStackPointer->Value1] = managedObject;
+                    return;
                 }
-                else
-                {
-                    throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{type}{(isRef ? "&" : "")}, actual: {managedType}");
-                }
-                return;
             }
-            switch (type)
+            switch (baseType)
             {
                 case DynamicBridge.Type.DB_I1:
                     evaluationStackPointer->Type = ValueType.Integer;
                     evaluationStackPointer->Value1 = *(sbyte*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_U1:
                     evaluationStackPointer->Type = ValueType.Integer;
                     evaluationStackPointer->Value1 = *(byte*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_I2:
                     evaluationStackPointer->Type = ValueType.Integer;
                     evaluationStackPointer->Value1 = *(short*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_U2:
                     evaluationStackPointer->Type = ValueType.Integer;
                     evaluationStackPointer->Value1 = *(ushort*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_I4:
                     evaluationStackPointer->Type = ValueType.Integer;
                     evaluationStackPointer->Value1 = *(int*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_U4:
                     evaluationStackPointer->Type = ValueType.Integer;
                     *(uint*)&evaluationStackPointer->Value1 = *(uint*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_I8:
                     evaluationStackPointer->Type = ValueType.Long;
                     *(long*)&evaluationStackPointer->Value1 = *(long*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_U8:
                     evaluationStackPointer->Type = ValueType.Long;
                     *(ulong*)&evaluationStackPointer->Value1 = *(ulong*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_R4:
                     evaluationStackPointer->Type = ValueType.Float;
                     *(float*)&evaluationStackPointer->Value1 = *(float*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_R8:
                     evaluationStackPointer->Type = ValueType.Double;
                     *(double*)&evaluationStackPointer->Value1 = *(double*)value;
-                    break;
+                    return;
                 case DynamicBridge.Type.DB_PTR:
                     evaluationStackPointer->Type = ValueType.Long;
                     *(IntPtr*)&evaluationStackPointer->Value1 = *(IntPtr*)value;
-                    break;
-                default:
-                    throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{type}{(isRef ? "&" : "")}");
+                    return;
             }
+            throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
         }
 #endif
     }

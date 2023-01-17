@@ -82,6 +82,7 @@ namespace IFix.Core
                 extras->errorCode = 0;
                 extras->capacity = (uint)(sizeof(long) * 8 - sizeof(DynamicBridge.Extras) + DynamicBridge.Extras.DEF_STACK_CAP);
                 extras->position = 0;
+                Action updateRef = null;
 
                 object newObj = null;
                 if (isInstantiate)
@@ -101,13 +102,21 @@ namespace IFix.Core
                 {
                     pArg = &call.argumentBase[0 - argStart];
                     DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[0];
-                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p0, virtualMachine);
+                    Action updateRefParam = EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p0, virtualMachine);
+                    if (updateRefParam != null)
+                    {
+                        updateRef += updateRefParam;
+                    }
                 }
                 if (count >= 2)
                 {
                     pArg = &call.argumentBase[1 - argStart];
                     DynamicBridge.Type paramType = (DynamicBridge.Type)method.paramType[1];
-                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p1, virtualMachine);
+                    Action updateRefParam = EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &p1, virtualMachine);
+                    if (updateRefParam != null)
+                    {
+                        updateRef += updateRefParam;
+                    }
                 }
                 for (int i = count - 1; i >= 2; --i)
                 {
@@ -121,7 +130,11 @@ namespace IFix.Core
                         break;
                     }
                     long pi = 0;
-                    EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &pi, virtualMachine);
+                    Action updateRefParam = EvaluationStackOperation.ToValue(call.evaluationStackBase, pArg, call.managedStack, paramType, &pi, virtualMachine);
+                    if (updateRefParam != null)
+                    {
+                        updateRef += updateRefParam;
+                    }
 #if NET_4_6
                     Buffer.MemoryCopy(&pi, &extras->stack[extras->position], extras->capacity - extras->position, paramSize);
 #else
@@ -146,6 +159,10 @@ namespace IFix.Core
                 if (extras->errorCode != 0)
                 {
                     throw new TargetException($"can not invoke method [{declaringType}.{methodName}], error code: {extras->errorCode}");
+                }
+                if (updateRef != null)
+                {
+                    updateRef();
                 }
                 if (isInstantiate)
                 {
