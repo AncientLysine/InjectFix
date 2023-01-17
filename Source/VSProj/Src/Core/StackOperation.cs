@@ -538,6 +538,25 @@ namespace IFix.Core
         public static unsafe Action ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack,
             DynamicBridge.Type type, void* value, VirtualMachine virtualMachine)
         {
+            //高频类型处理提前&手动内联
+            switch (type)
+            {
+                case DynamicBridge.Type.DB_I4:
+                    if (evaluationStackPointer->Type == ValueType.Integer)
+                    {
+                        *(int*)value = evaluationStackPointer->Value1;
+                        return null;
+                    }
+                    break;
+                case DynamicBridge.Type.DB_OBJ:
+                    if (evaluationStackPointer->Type == ValueType.Object)
+                    {
+                        object obj = managedStack[evaluationStackPointer->Value1];
+                        *(IntPtr*)value = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
+                        return null;
+                    }
+                    break;
+            }
             bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
             bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
             DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
