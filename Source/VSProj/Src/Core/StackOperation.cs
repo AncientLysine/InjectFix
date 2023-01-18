@@ -541,6 +541,13 @@ namespace IFix.Core
             //高频类型处理提前&手动内联
             switch (type)
             {
+                case DynamicBridge.Type.DB_U1:
+                    if (evaluationStackPointer->Type == ValueType.Integer)
+                    {
+                        *(byte*)value = *(byte*)&evaluationStackPointer->Value1;
+                        return null;
+                    }
+                    break;
                 case DynamicBridge.Type.DB_I4:
                     if (evaluationStackPointer->Type == ValueType.Integer)
                     {
@@ -548,6 +555,7 @@ namespace IFix.Core
                         return null;
                     }
                     break;
+                case DynamicBridge.Type.DB_STR:
                 case DynamicBridge.Type.DB_OBJ:
                     if (evaluationStackPointer->Type == ValueType.Object)
                     {
@@ -591,12 +599,12 @@ namespace IFix.Core
                     return GetPrimitiveValue<long>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_U8:
                     return GetPrimitiveValue<ulong>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
-                case DynamicBridge.Type.DB_PTR:
-                    return GetPrimitiveValue<IntPtr>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_R4:
                     return GetPrimitiveValue<float>(ValueType.Float, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
                 case DynamicBridge.Type.DB_R8:
                     return GetPrimitiveValue<double>(ValueType.Double, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
+                case DynamicBridge.Type.DB_PTR:
+                    return GetPrimitiveValue<IntPtr>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
             }
             throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
         }
@@ -632,8 +640,8 @@ namespace IFix.Core
                 evaluationStackPointer->Type == ValueType.ArrayReference) //ldelema
             {
                 //TODO by Lysine 实现Field取地址，去掉UpdateReference
-                object managedObj = ToObject(evaluationStackPointer, evaluationStackPointer, managedStack, null, virtualMachine, false);
-                IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(managedObj);
+                object obj = ToObject(evaluationStackPointer, evaluationStackPointer, managedStack, null, virtualMachine, false);
+                IntPtr ptr = DynamicBridge.IL2CPPBridge.ObjectToPointer(obj);
                 //复制函数参数，防止闭包过早创建
                 var esb = evaluationStackBase;
                 var esp = evaluationStackPointer;
@@ -645,8 +653,9 @@ namespace IFix.Core
                     *(IntPtr*)value = Marshal.UnsafeAddrOfPinnedArrayElement(container, 0);
                     return () =>
                     {
-                        object managedNew = DynamicBridge.IL2CPPBridge.PointerToObject(container[0]);
-                        UpdateReference(esb, esp, ms, managedNew, vm, null);
+                        IntPtr newPtr = container[0];
+                        object newObj = DynamicBridge.IL2CPPBridge.PointerToObject(newPtr);
+                        UpdateReference(esb, esp, ms, newObj, vm, null);
                     };
                 }
                 else
@@ -654,7 +663,7 @@ namespace IFix.Core
                     *(IntPtr*)value = ptr;
                     return () =>
                     {
-                        UpdateReference(esb, esp, ms, managedObj, vm, null);
+                        UpdateReference(esb, esp, ms, obj, vm, null);
                     };
                 }
             }
@@ -689,8 +698,8 @@ namespace IFix.Core
                 evaluationStackPointer->Type == ValueType.ChainFieldReference)
             {
                 //TODO by Lysine Field实现取地址，去掉UpdateReference
-                object boxedObj = ToObject(evaluationStackBase, evaluationStackPointer, managedStack, typeof(T), virtualMachine, false);
-                T val = (T)boxedObj;
+                object obj = ToObject(evaluationStackBase, evaluationStackPointer, managedStack, typeof(T), virtualMachine, false);
+                T val = (T)obj;
                 //复制函数参数，防止闭包过早创建
                 var esb = evaluationStackBase;
                 var esp = evaluationStackPointer;
@@ -702,8 +711,8 @@ namespace IFix.Core
                     *(T**)value = (T*)Marshal.UnsafeAddrOfPinnedArrayElement(container, 0);
                     return () =>
                     {
-                        object boxedNew = container[0];
-                        UpdateReference(esb, esp, ms, boxedNew, vm, typeof(T));
+                        object newObj = container[0];
+                        UpdateReference(esb, esp, ms, newObj, vm, typeof(T));
                     };
                 }
                 else
@@ -731,6 +740,31 @@ namespace IFix.Core
 
         public static unsafe void PushValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
         {
+            //高频类型处理提前&手动内联
+            switch (type)
+            {
+                case DynamicBridge.Type.DB_U1:
+                    {
+                        evaluationStackPointer->Type = ValueType.Integer;
+                        evaluationStackPointer->Value1 = *(byte*)value;
+                    }
+                    return;
+                case DynamicBridge.Type.DB_I4:
+                    {
+                        evaluationStackPointer->Type = ValueType.Integer;
+                        evaluationStackPointer->Value1 = *(int*)value;
+                    }
+                    return;
+                case DynamicBridge.Type.DB_OBJ:
+                case DynamicBridge.Type.DB_STR:
+                    {
+                        evaluationStackPointer->Type = ValueType.Object;
+                        evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
+                        object obj = DynamicBridge.IL2CPPBridge.PointerToObject(*(IntPtr*)value);
+                        managedStack[evaluationStackPointer->Value1] = obj;
+                    }
+                    return;
+            }
             bool isRef = (type & DynamicBridge.Type.DB_REF) > 0;
             bool isBox = (type & DynamicBridge.Type.DB_BOX) > 0;
             DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
@@ -742,25 +776,25 @@ namespace IFix.Core
                 baseType == DynamicBridge.Type.DB_OBJ ||
                 isBox)
             {
-                Type managedType;
-                var managedObject = DynamicBridge.IL2CPPBridge.PointerToObject(*(IntPtr*)value);
-                if (managedObject == null || (managedType = managedObject.GetType()).IsClass)
+                object obj = DynamicBridge.IL2CPPBridge.PointerToObject(*(IntPtr*)value);
+                Type objType;
+                if (obj == null || (objType = obj.GetType()).IsClass)
                 {
                     evaluationStackPointer->Type = ValueType.Object;
                     evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
-                    managedStack[evaluationStackPointer->Value1] = managedObject;
+                    managedStack[evaluationStackPointer->Value1] = obj;
                     return;
                 }
-                else if (managedType.IsPrimitive)
+                else if (objType.IsPrimitive)
                 {
-                    UnboxPrimitive(evaluationStackPointer, managedObject, managedType);
+                    UnboxPrimitive(evaluationStackPointer, obj, objType);
                     return;
                 }
-                else if (managedType.IsValueType)
+                else if (objType.IsValueType)
                 {
                     evaluationStackPointer->Type = ValueType.ValueType;
                     evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
-                    managedStack[evaluationStackPointer->Value1] = managedObject;
+                    managedStack[evaluationStackPointer->Value1] = obj;
                     return;
                 }
             }
@@ -808,7 +842,7 @@ namespace IFix.Core
                     return;
                 case DynamicBridge.Type.DB_PTR:
                     evaluationStackPointer->Type = ValueType.Long;
-                    *(IntPtr*)&evaluationStackPointer->Value1 = *(IntPtr*)value;
+                    *(long*)&evaluationStackPointer->Value1 = (*(IntPtr*)value).ToInt64();
                     return;
             }
             throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
