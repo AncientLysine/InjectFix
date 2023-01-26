@@ -87,7 +87,7 @@ namespace IFix.Core
                 DynamicBridge.Bridge.InvokeMethodUnchecked(ref setter, val, 0, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({setter}), error code: {extras.errorCode}");
                 }
             }
             else
@@ -101,7 +101,7 @@ namespace IFix.Core
                 DynamicBridge.Bridge.InvokeMethodUnchecked(ref setter, (long)ptr, val, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({setter}), error code: {extras.errorCode}");
                 }
             }
         }
@@ -115,7 +115,7 @@ namespace IFix.Core
                 val = DynamicBridge.Bridge.InvokeMethodUnchecked(ref getter, 0, 0, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({getter}), error code: {extras.errorCode}");
                 }
             }
             else
@@ -130,23 +130,37 @@ namespace IFix.Core
                 val = DynamicBridge.Bridge.InvokeMethodUnchecked(ref getter, (long)ptr, 0, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({getter}), error code: {extras.errorCode}");
                 }
             }
-            EvaluationStackOperation.PushValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val);
+            try
+            {
+                EvaluationStackOperation.PushValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val);
+            }
+            catch (EvaluationStackException e)
+            {
+                throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({getter})", e);
+            }
         }
 
         public unsafe void Store(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             long val;
-            EvaluationStackOperation.ToValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val, virtualMachine);
+            try
+            {
+                EvaluationStackOperation.ToValue(evaluationStackBase, evaluationStackPointer, managedStack, (DynamicBridge.Type)getter.returnType, &val, virtualMachine);
+            }
+            catch (EvaluationStackException e)
+            {
+                throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({setter})", e);
+            }
             if (isStatic)
             {
                 DynamicBridge.Extras extras = new DynamicBridge.Extras();
                 DynamicBridge.Bridge.InvokeMethodUnchecked(ref setter, val, 0, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({setter}), error code: {extras.errorCode}");
                 }
             }
             else
@@ -162,9 +176,9 @@ namespace IFix.Core
                 DynamicBridge.Bridge.InvokeMethodUnchecked(ref setter, (long)ptr, val, &extras);
                 if (extras.errorCode != 0)
                 {
-                    throw new TargetException($"can not access field [{declaringType}.{fieldName}], error code: {extras.errorCode}");
+                    throw new TargetException($"can not access field [{declaringType}.{fieldName}] ({setter}), error code: {extras.errorCode}");
                 }
-                //如果field，array元素是值类型，需要重新update回去
+                //濡傛灉field锛宎rray鍏冪礌鏄�肩被鍨嬶紝闇�瑕侀噸鏂皍pdate鍥炲幓
                 if ((ins->Type == ValueType.FieldReference
                     || ins->Type == ValueType.ChainFieldReference
                     || ins->Type == ValueType.StaticFieldReference

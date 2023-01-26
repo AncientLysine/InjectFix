@@ -85,6 +85,13 @@ namespace IFix.Core
         }
     }
 
+    public class EvaluationStackException : Exception
+    {
+        public EvaluationStackException(string message) : base(message)
+        {
+        }
+    }
+
     unsafe internal static class EvaluationStackOperation
     {
         internal static void UnboxPrimitive(Value* evaluationStackPointer, object obj, Type type)
@@ -606,7 +613,7 @@ namespace IFix.Core
                 case DynamicBridge.Type.DB_PTR:
                     return GetPrimitiveValue<IntPtr>(ValueType.Long, evaluationStackBase, evaluationStackPointer, managedStack, type, value, virtualMachine);
             }
-            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+            throw new EvaluationStackException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
         }
 
         private static unsafe Action GetManagedValue(ValueType stackType, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine)
@@ -667,7 +674,7 @@ namespace IFix.Core
                     };
                 }
             }
-            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+            throw new EvaluationStackException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
         }
 
         private static unsafe Action GetPrimitiveValue<T>(ValueType stackType, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value, VirtualMachine virtualMachine) where T : unmanaged
@@ -735,7 +742,7 @@ namespace IFix.Core
                 }
                 return null;
             }
-            throw new ArgumentException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
+            throw new EvaluationStackException($"argument unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}, actual: {evaluationStackPointer->Type}");
         }
 
         public static unsafe void PushValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack, DynamicBridge.Type type, void* value)
@@ -770,7 +777,7 @@ namespace IFix.Core
             DynamicBridge.Type baseType = type & DynamicBridge.Type.DB_MSK;
             if (isRef)
             {
-                throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
+                throw new EvaluationStackException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
             }
             if (baseType == DynamicBridge.Type.DB_STR ||
                 baseType == DynamicBridge.Type.DB_OBJ ||
@@ -778,7 +785,7 @@ namespace IFix.Core
             {
                 object obj = DynamicBridge.IL2CPPBridge.PointerToObject(*(IntPtr*)value);
                 Type objType;
-                if (obj == null || (objType = obj.GetType()).IsClass)
+                if (!isBox || obj == null || (objType = obj.GetType()).IsClass)
                 {
                     evaluationStackPointer->Type = ValueType.Object;
                     evaluationStackPointer->Value1 = (int)(evaluationStackPointer - evaluationStackBase);
@@ -845,7 +852,7 @@ namespace IFix.Core
                     *(long*)&evaluationStackPointer->Value1 = (*(IntPtr*)value).ToInt64();
                     return;
             }
-            throw new ArgumentException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
+            throw new EvaluationStackException($"return unsupported, formal: {(isBox ? "^" : "")}{baseType}{(isRef ? "&" : "")}");
         }
 #endif
     }

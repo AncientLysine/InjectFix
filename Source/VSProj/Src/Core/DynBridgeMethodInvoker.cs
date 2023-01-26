@@ -58,7 +58,7 @@ namespace IFix.Core
                 returnType = (method as MethodInfo).ReturnType;
                 hasReturn = returnType != typeof(void);
             }
-            if (!hasReturn || returnType.IsClass)
+            if (!hasReturn || returnType.IsClass || (returnType.IsValueType && !returnType.IsPrimitive && !returnType.IsEnum))
             {
                 flag |= DynamicBridge.IL2CPPBridge.Flag.DB_USING_IL2CPP_RUNTIME_INVOKER;
             }
@@ -153,12 +153,12 @@ namespace IFix.Core
                 }
                 if (hasThis && p0 == 0)
                 {
-                    throw new TargetException($"can not invoke method [{declaringType}.{methodName}], Non-static method require instance but got null.");
+                    throw new TargetException($"can not invoke method [{declaringType}.{methodName}] ({method}), Non-static method require instance but got null.");
                 }
                 long rv = DynamicBridge.Bridge.InvokeMethodUnchecked(ref method, p0, p1, extras);
                 if (extras->errorCode != 0)
                 {
-                    throw new TargetException($"can not invoke method [{declaringType}.{methodName}], error code: {extras->errorCode}");
+                    throw new TargetException($"can not invoke method [{declaringType}.{methodName}] ({method}), error code: {extras->errorCode}");
                 }
                 if (updateRef != null)
                 {
@@ -177,9 +177,9 @@ namespace IFix.Core
                     pushResult = true;
                 }
             }
-            catch (TargetInvocationException e)
+            catch (EvaluationStackException e)
             {
-                throw e.InnerException;
+                throw new TargetException($"can not invoke method [{declaringType}.{methodName}] ({method})", e);
             }
             finally
             {
