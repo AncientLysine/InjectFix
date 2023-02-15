@@ -270,7 +270,7 @@ namespace IFix.Core
         }
 
         // #lizard forgives
-        unsafe static public VirtualMachine Load(Stream stream, bool checkNew = true)
+        unsafe static public VirtualMachine Load(Stream stream, bool checkNew = true, bool usingDynBridge = false)
         {
             List<IntPtr> nativePointers = new List<IntPtr>();
 
@@ -488,9 +488,10 @@ namespace IFix.Core
                     }
                 })
                 {
+                    ExceptionHandlers = exceptionHandlers.ToArray(),
+                    UsingDynBridge = usingDynBridge,
                     ExternTypes = externTypes,
                     ExternMethods = externMethods,
-                    ExceptionHandlers = exceptionHandlers.ToArray(),
                     InternStrings = internStrings,
                     FieldInfos = fieldInfos,
                     NewFieldInfos = newFieldInfo,

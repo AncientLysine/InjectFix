@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace IFix.Core
 {
-    internal class ReflectionFieldAccessor
+    internal class ReflectionFieldAccessor : ExternAccessor
     {
         FieldInfo fieldInfo;
 
@@ -24,17 +24,17 @@ namespace IFix.Core
             isStatic = fieldInfo.IsStatic;
         }
 
-        public object GetValue(object obj)
+        public override object GetValue(object obj)
         {
             return fieldInfo.GetValue(obj);
         }
 
-        public void SetValue(object obj, object val)
+        public override void SetValue(object obj, object val)
         {
             fieldInfo.SetValue(obj, val);
         }
 
-        public unsafe void Load(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public override unsafe void Load(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             object val;
             if (!isStatic)
@@ -54,7 +54,7 @@ namespace IFix.Core
             EvaluationStackOperation.PushObject(evaluationStackBase, evaluationStackPointer, managedStack, val, fieldType);
         }
 
-        public unsafe void Store(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public override unsafe void Store(VirtualMachine vm, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             object val = EvaluationStackOperation.ToObject(evaluationStackBase, evaluationStackPointer, managedStack, fieldType, vm);
             if (!isStatic)

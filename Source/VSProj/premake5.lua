@@ -21,12 +21,17 @@ configuration "vs*"
 project "Bridge.CSharp"
 language "C#"
 kind "SharedLib"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Lib"
 
 files
 {
     "ThirdParty/DynBridge/CSharp/*.cs",
+}
+
+defines
+{
+	"NET_4_6",
 }
 
 links
@@ -47,7 +52,7 @@ configuration { "Release*" }
 project "IFix.Core"
 language "C#"
 kind "SharedLib"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Lib"
 
 files
@@ -61,7 +66,8 @@ files
 defines
 {
 	"UNITY_IPHONE",
-	"ENABLE_IL2CPP",
+	"ENABLE_DYNBRIDGE",
+	"NET_4_6",
 }
 
 links
@@ -83,7 +89,7 @@ configuration { "Release*" }
 project "IFix"
 language "C#"
 kind "ConsoleApp"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Bin"
 
 files
@@ -119,7 +125,7 @@ configuration { "Release*" }
 project "IFix.TestDLL"
 language "C#"
 kind "SharedLib"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Lib"
 
 files
@@ -141,7 +147,7 @@ links
 project "IFix.TestDLL.Redirect"
 language "C#"
 kind "SharedLib"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Lib"
 
 files
@@ -163,7 +169,7 @@ links
 project "IFix.UnitTest"
 language "C#"
 kind "SharedLib"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Lib"
 
 dependson { "IFix.Core", "IFix.TestDLL", "IFix.TestDLL.Redirect", "IFix" }
@@ -207,7 +213,7 @@ configuration { "Release*" }
 project "IFix.PerfTest"
 language "C#"
 kind "ConsoleApp"
-framework "3.5"
+framework "4.7.2"
 targetdir "./Bin"
 
 files

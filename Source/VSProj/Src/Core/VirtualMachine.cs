@@ -14,18 +14,28 @@ namespace IFix.Core
     using System.IO;
     using System.Linq;
 
-#if ENABLE_IL2CPP
-    using ExternAccessor = DynBridgeFieldAccessor;
-#else
-    using ExternAccessor = ReflectionFieldAccessor;
-#endif
-
     class RuntimeException : Exception
     {
         public Exception Real { get;set;}
     }
 
-    public delegate void ExternInvoker(VirtualMachine vm, ref Call call, bool isInstantiate);
+    public abstract class ExternInvoker
+    {
+        public abstract void Invoke(VirtualMachine vm, ref Call call, bool isInstantiate);
+    }
+
+    public abstract class ExternAccessor
+    {
+        public abstract void SetValue(object obj, object value);
+        public abstract object GetValue(object obj);
+        public abstract unsafe void Load(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack);
+        public abstract unsafe void Store(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack);
+    }
+
+    public abstract class ObjectClone
+    {
+        public abstract object Clone(object obj);
+    }
 
     internal class FieldAddr
     {
@@ -192,13 +202,15 @@ namespace IFix.Core
 
         public const int MAX_EVALUATION_STACK_SIZE = 1024 * 10;
 
-        internal ObjectClone objectClone = new ObjectClone();
+        internal ObjectClone objectClone;
 
         Instruction** unmanagedCodes;
 
         ExceptionHandler[][] exceptionHandlers;
 
         Action onDispose;
+
+        bool usingDynBridge = false;
 
         ExternInvoker[] externInvokers;
 
@@ -236,6 +248,24 @@ namespace IFix.Core
             set
             {
                 exceptionHandlers = value;
+            }
+        }
+
+        internal bool UsingDynBridge
+        {
+            set
+            {
+                usingDynBridge = value;
+#if ENABLE_DYNBRIDGE
+                if (usingDynBridge)
+                {
+                    objectClone = new DynBridgeObjectClone();
+                }
+                else
+#endif
+                {
+                    objectClone = new ReflectionObjectClone();
+                }
             }
         }
 
@@ -494,6 +524,31 @@ namespace IFix.Core
             return null;
         }
 
+        internal ExternInvoker GetExternInvoker(int methodId)
+        {
+            var externInvoker = externInvokers[methodId];
+            if (externInvoker == null)
+            {
+                var methodInfo = externMethods[methodId];
+                if (methodInfo == null)
+                {
+                    return null;
+                }
+#if ENABLE_DYNBRIDGE
+                if (usingDynBridge)
+                {
+                    externInvoker = new DynBridgeMethodInvoker(methodInfo);
+                }
+                else
+#endif
+                {
+                    externInvoker = new ReflectionMethodInvoker(methodInfo);
+                }
+                externInvokers[methodId] = externInvoker;
+            }
+            return externInvoker;
+        }
+
         internal ExternAccessor GetExternAccessor(int fieldIndex)
         {
             var externAccessor = externAccessors[fieldIndex];
@@ -504,7 +559,16 @@ namespace IFix.Core
                 {
                     return null;
                 }
-                externAccessor = new ExternAccessor(fieldInfo);
+#if ENABLE_DYNBRIDGE
+                if (usingDynBridge)
+                {
+                    externAccessor = new DynBridgeFieldAccessor(fieldInfo);
+                }
+                else
+#endif
+                {
+                    externAccessor = new ReflectionFieldAccessor(fieldInfo);
+                }
                 externAccessors[fieldIndex] = externAccessor;
             }
             return externAccessor;
@@ -919,17 +983,6 @@ namespace IFix.Core
                                 }
                             }
                             int paramCount = pc->Operand >> 16;
-                            var externInvokeFunc = externInvokers[methodId];
-                            if (externInvokeFunc == null)
-                            {
-                                externInvokers[methodId] = externInvokeFunc
-#if ENABLE_IL2CPP
-                                    = (new DynBridgeMethodInvoker(externMethods[methodId])).Invoke;
-#else
-                                    = (new ReflectionMethodInvoker(externMethods[methodId])).Invoke;
-#endif
-                            }
-                            //Info("call extern: " + externMethods[methodId]);
                             var top = evaluationStackPointer - paramCount;
                             //for(int kk = 0; kk < paramCount; kk++)
                             //{
@@ -954,7 +1007,7 @@ namespace IFix.Core
                             };
                             //调用外部前，需要保存当前top，以免外部从新进入内部时覆盖栈
                             ThreadStackInfo.Stack.UnmanagedStack->Top = evaluationStackPointer;
-                            externInvokeFunc(this, ref call, code == Code.Newobj);
+                            GetExternInvoker(methodId).Invoke(this, ref call, code == Code.Newobj);
                             evaluationStackPointer = call.currentTop;
                             break;
                         //Ldloc_0:3.35279% Ldloc_S:2.624982% Ldloc_1:1.958552% Ldloc_2:1.278956% Ldloc_3:0.829925%

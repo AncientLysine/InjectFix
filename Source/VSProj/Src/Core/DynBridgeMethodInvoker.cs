@@ -9,10 +9,10 @@ using System;
 using System.Reflection;
 using System.Runtime.Remoting.Activation;
 
-#if ENABLE_IL2CPP
+#if ENABLE_DYNBRIDGE
 namespace IFix.Core
 {
-    internal class DynBridgeMethodInvoker
+    internal class DynBridgeMethodInvoker : ExternInvoker
     {
         DynamicBridge.Method method;
 
@@ -58,7 +58,7 @@ namespace IFix.Core
                 returnType = (method as MethodInfo).ReturnType;
                 hasReturn = returnType != typeof(void);
             }
-            if (!hasReturn || returnType.IsClass || (returnType.IsValueType && !returnType.IsPrimitive && !returnType.IsEnum))
+            if (hasReturn && returnType.IsValueType && !returnType.IsPrimitive && !returnType.IsEnum)
             {
                 flag |= DynamicBridge.IL2CPPBridge.Flag.DB_USING_IL2CPP_RUNTIME_INVOKER;
             }
@@ -71,7 +71,7 @@ namespace IFix.Core
             DynamicBridge.IL2CPPBridge.GetMethod(method, out this.method, flag);
         }
 
-        public unsafe void Invoke(VirtualMachine virtualMachine, ref Call call, bool isInstantiate)
+        public override unsafe void Invoke(VirtualMachine virtualMachine, ref Call call, bool isInstantiate)
         {
             var pushResult = false;
             try

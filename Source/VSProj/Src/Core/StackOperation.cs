@@ -541,7 +541,7 @@ namespace IFix.Core
             }
         }
 
-#if ENABLE_IL2CPP
+#if ENABLE_DYNBRIDGE
         public static unsafe Action ToValue(Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack,
             DynamicBridge.Type type, void* value, VirtualMachine virtualMachine)
         {

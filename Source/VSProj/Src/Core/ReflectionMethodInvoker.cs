@@ -10,7 +10,7 @@ using System;
 
 namespace IFix.Core
 {
-    internal class ReflectionMethodInvoker
+    internal class ReflectionMethodInvoker : ExternInvoker
     {
         int paramCount;
 
@@ -78,7 +78,7 @@ namespace IFix.Core
         }
 
         // #lizard forgives
-        public unsafe void Invoke(VirtualMachine virtualMachine, ref Call call, bool isInstantiate)
+        public override unsafe void Invoke(VirtualMachine virtualMachine, ref Call call, bool isInstantiate)
         {
             var managedStack = call.managedStack;
             var pushResult = false;

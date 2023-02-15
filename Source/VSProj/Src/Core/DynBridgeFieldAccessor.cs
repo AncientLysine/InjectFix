@@ -1,10 +1,10 @@
 using System;
 using System.Reflection;
 
-#if ENABLE_IL2CPP
+#if ENABLE_DYNBRIDGE
 namespace IFix.Core
 {
-    internal class DynBridgeFieldAccessor
+    internal class DynBridgeFieldAccessor : ExternAccessor
     {
         DynamicBridge.Method getter;
 
@@ -34,7 +34,7 @@ namespace IFix.Core
             DynamicBridge.IL2CPPBridge.GetField(fieldInfo, out getter, out setter, flag);
         }
 
-        public unsafe object GetValue(object obj)
+        public override unsafe object GetValue(object obj)
         {
             long val;
             if (isStatic)
@@ -70,7 +70,7 @@ namespace IFix.Core
             }
         }
 
-        public unsafe void SetValue(object obj, object value)
+        public override unsafe void SetValue(object obj, object value)
         {
             long val;
             if (fieldType.IsPrimitive || fieldType.IsEnum)
@@ -106,7 +106,7 @@ namespace IFix.Core
             }
         }
 
-        public unsafe void Load(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public override unsafe void Load(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             long val;
             if (isStatic)
@@ -143,7 +143,7 @@ namespace IFix.Core
             }
         }
 
-        public unsafe void Store(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
+        public override unsafe void Store(VirtualMachine virtualMachine, Value* evaluationStackBase, Value* evaluationStackPointer, object[] managedStack)
         {
             long val;
             try
